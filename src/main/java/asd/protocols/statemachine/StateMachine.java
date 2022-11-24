@@ -1,8 +1,10 @@
 package asd.protocols.statemachine;
 
+import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.IncorrectAgreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
+import asd.protocols.agreement.requests.AddReplicaRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import asd.protocols.statemachine.notifications.ExecuteNotification;
@@ -13,6 +15,8 @@ import asd.protocols.statemachine.requests.OrderRequest;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
+import pt.unl.fct.di.novasys.babel.internal.InternalEvent;
+import pt.unl.fct.di.novasys.babel.internal.MessageFailedEvent;
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
 import pt.unl.fct.di.novasys.channel.tcp.events.*;
 import pt.unl.fct.di.novasys.network.data.Host;
@@ -109,9 +113,9 @@ public class StateMachine extends GenericProtocol {
 		} else {
 			state = State.JOINING;
 			logger.info("Starting in JOINING as I am not part of initial membership");
-			// TODO addReplica
 			//You have to do something to join the system and know which instance you joined
 			// (and copy the state of that instance)
+			sendRequest(new AddReplicaRequest(0, self), Agreement.PROTOCOL_ID);
 		}
 
 	}
@@ -127,12 +131,17 @@ public class StateMachine extends GenericProtocol {
 			//Maybe you should modify what is it that you are proposing so that you remember that this
 			//operation was issued by the application (and not an internal operation, check the uponDecidedNotification)
 			sendRequest(new ProposeRequest(nextInstance++, request.getOpId(), request.getOperation()),
-					IncorrectAgreement.PROTOCOL_ID);
+					Agreement.PROTOCOL_ID);
 		}
 	}
 
 	//TODO addReplicaReply, get instance and joined and copy of state.
-	//TODO dumb and process pending requests
+	//TODO dump and process pending requests
+
+	/*--------------------------------- Replies ---------------------------------------- */
+	private void uponAddReplicaReply() {
+		//TODO
+	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */
 	private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
@@ -140,6 +149,7 @@ public class StateMachine extends GenericProtocol {
 		//Maybe we should make sure operations are executed in order?
 		//You should be careful and check if this operation if an application operation (and send it up)
 		//or if this is an operations that was executed by the state machine itself (in which case you should execute)
+
 		triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
 	}
 
