@@ -45,6 +45,8 @@ public class StateMachine extends GenericProtocol {
 	private State state;
 	private List<Host> membership;
 	private int nextInstance;
+
+	private final List<OrderRequest> pendingRequests;
 	public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
 		super(PROTOCOL_NAME, PROTOCOL_ID);
 		nextInstance = 0;
@@ -54,6 +56,7 @@ public class StateMachine extends GenericProtocol {
 
 		logger.info("Listening on {}:{}", address, port);
 		this.self = new Host(InetAddress.getByName(address), Integer.parseInt(port));
+		this.pendingRequests = new LinkedList<>();
 
 		Properties channelProps = new Properties();
 		channelProps.setProperty(TCPChannel.ADDRESS_KEY, address);
@@ -106,6 +109,7 @@ public class StateMachine extends GenericProtocol {
 		} else {
 			state = State.JOINING;
 			logger.info("Starting in JOINING as I am not part of initial membership");
+			// TODO addReplica
 			//You have to do something to join the system and know which instance you joined
 			// (and copy the state of that instance)
 		}
@@ -117,6 +121,7 @@ public class StateMachine extends GenericProtocol {
 		logger.debug("Received request: " + request);
 		if (state == State.JOINING) {
 			//Do something smart (like buffering the requests)
+			pendingRequests.add(request);
 		} else if (state == State.ACTIVE) {
 			//Also do something starter, we don't want an infinite number of instances active
 			//Maybe you should modify what is it that you are proposing so that you remember that this
@@ -125,6 +130,9 @@ public class StateMachine extends GenericProtocol {
 					IncorrectAgreement.PROTOCOL_ID);
 		}
 	}
+
+	//TODO addReplicaReply, get instance and joined and copy of state.
+	//TODO dumb and process pending requests
 
 	/*--------------------------------- Notifications ---------------------------------------- */
 	private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
