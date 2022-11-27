@@ -8,7 +8,7 @@ if [ -z $processes ] || [ $processes -lt 1 ]; then
 fi
 
 i=0
-base_p2p_port=34000
+base_p2p_port=36000
 base_server_port=35000
 
 membership="localhost:${base_p2p_port}"
@@ -23,7 +23,7 @@ done
 
 i=0
 while [ $i -lt $processes ]; do
-  java -DlogFilename=logs/node$(($base_p2p_port + $i)) -cp target/asdProj2.jar Main -conf config.properties address=localhost p2p_port=$(($base_p2p_port + $i)) server_port=$(($base_server_port + $i)) initial_membership=$membership 2>&1 | sed "s/^/[$(($base_p2p_port + $i))] /" &
+  java -DlogFilename=logs/node$(($base_p2p_port + $i)) -cp target/asdProj.jar:./ asd.Main -conf config.properties address=localhost p2p_port=$(($base_p2p_port + $i)) server_port=$(($base_server_port + $i)) initial_membership=$membership 2>&1 | sed "s/^/[$(($base_p2p_port + $i))] /" &
   echo "launched process on p2p port $(($base_p2p_port + $i)), server port $(($base_server_port + $i))"
   sleep 1
   i=$(($i + 1))
@@ -32,6 +32,6 @@ done
 sleep 2
 read -p "------------- Press enter to kill servers. --------------------"
 
-kill $(ps aux | grep 'asdProj2.jar' | awk '{print $2}')
+kill $(ps aux | grep 'asdProj.jar' | awk '{print $2}')
 
 echo "All processes done!"
