@@ -1,10 +1,5 @@
 package asd.paxos.proposal;
 
-import java.io.IOException;
-
-import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.network.ISerializer;
-
 public class Proposal {
     public final ProposalNumber number;
     public final ProposalValue value;
@@ -13,21 +8,6 @@ public class Proposal {
         this.number = messageNumber;
         this.value = value;
     }
-
-    public static final ISerializer<Proposal> serializer = new ISerializer<Proposal>() {
-        @Override
-        public void serialize(Proposal msg, ByteBuf buf) throws IOException {
-            ProposalNumber.serializer.serialize(msg.number, buf);
-            ProposalValue.serializer.serialize(msg.value, buf);
-        }
-
-        @Override
-        public Proposal deserialize(ByteBuf buf) throws IOException {
-            ProposalNumber messageNumber = ProposalNumber.serializer.deserialize(buf);
-            ProposalValue value = ProposalValue.serializer.deserialize(buf);
-            return new Proposal(messageNumber, value);
-        }
-    };
 
     @Override
     public String toString() {

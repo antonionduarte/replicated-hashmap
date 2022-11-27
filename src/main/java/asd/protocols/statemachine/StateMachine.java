@@ -139,6 +139,7 @@ public class StateMachine extends GenericProtocol {
 	/*--------------------------------- Requests ---------------------------------------- */
 	private void uponOrderRequest(OrderRequest request, short sourceProto) {
 		logger.debug("Received request: " + request);
+		logger.trace("Received order request with payload size: " + request.getOperation().length);
 		if (state == State.JOINING) {
 			// Do something smart (like buffering the requests)
 			pendingRequests.add(request);

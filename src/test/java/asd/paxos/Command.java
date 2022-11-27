@@ -7,6 +7,9 @@ import asd.paxos.proposal.ProposalNumber;
 import asd.paxos.proposal.ProposalValue;
 
 public class Command {
+    public static record Decided(ProposalValue value) {
+    }
+
     public static record PrepareRequest(ProcessId processId, ProposalNumber proposalNumber) {
     }
 
@@ -34,7 +37,8 @@ public class Command {
     }
 
     public static Command from(ProcessId sender, Object command) {
-        assert command instanceof PrepareRequest
+        assert command instanceof Decided
+                || command instanceof PrepareRequest
                 || command instanceof PrepareOk
                 || command instanceof AcceptRequest
                 || command instanceof AcceptOk
@@ -44,6 +48,14 @@ public class Command {
 
     public ProcessId getSender() {
         return sender;
+    }
+
+    public boolean isDecided() {
+        return command instanceof Decided;
+    }
+
+    public Decided getDecided() {
+        return (Decided) command;
     }
 
     public boolean isPrepareRequest() {

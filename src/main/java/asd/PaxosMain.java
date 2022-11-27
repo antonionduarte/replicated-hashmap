@@ -1,13 +1,5 @@
 package asd;
 
-import asd.protocols.agreement.IncorrectAgreement;
-import asd.protocols.app.HashApp;
-import asd.protocols.paxos.PaxosProtocol;
-import asd.protocols.statemachine.StateMachine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import pt.unl.fct.di.novasys.babel.core.Babel;
-
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -15,6 +7,14 @@ import java.net.SocketException;
 import java.security.InvalidParameterException;
 import java.util.Enumeration;
 import java.util.Properties;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import asd.protocols.app.HashApp;
+import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.statemachine.StateMachine;
+import pt.unl.fct.di.novasys.babel.core.Babel;
 
 public class PaxosMain {
 
@@ -44,18 +44,21 @@ public class PaxosMain {
         addInterfaceIp(props);
 
         var paxos = new PaxosProtocol();
-        var ipaxos = new InteractivePaxos(paxos);
+        var ipaxos = new InteractivePaxos();
         var statemachine = new StateMachine(props);
+        var hashmapapp = new HashApp(props);
 
         babel.registerProtocol(paxos);
         babel.registerProtocol(ipaxos);
         babel.registerProtocol(statemachine);
+        babel.registerProtocol(hashmapapp);
 
         // Init the protocols. This should be done after creating all protocols,
         // since there can be inter-protocol communications in this step.
         statemachine.init(props);
         ipaxos.init(props);
         paxos.init(props);
+        hashmapapp.init(props);
 
         // Start babel and protocol threads
         babel.start();

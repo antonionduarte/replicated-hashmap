@@ -24,6 +24,11 @@ public class PaxosCommandQueue {
         }
 
         @Override
+        public void decided(ProposalValue value) {
+            queue.add(Command.from(processId, new Command.Decided(value)));
+        }
+
+        @Override
         public void sendPrepareRequest(ProcessId processId, ProposalNumber proposalNumber) {
             this.queue.add(Command.from(this.processId, new Command.PrepareRequest(processId, proposalNumber)));
         }

@@ -15,6 +15,14 @@ public interface PaxosIO {
     ProcessId getProcessId();
 
     /**
+     * Called when this instance of paxos has decided on a value.
+     * Only called once per paxos instance.
+     * 
+     * @param proposedValue
+     */
+    void decided(ProposalValue proposedValue);
+
+    /**
      * Send a prepare request to an acceptor.
      * 
      * @param processId      The acceptor to send the request to.

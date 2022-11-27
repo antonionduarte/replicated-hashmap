@@ -1,10 +1,6 @@
 package asd.paxos.proposal;
 
-import java.io.IOException;
-
 import asd.paxos.ProcessId;
-import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.network.ISerializer;
 
 public class ProposalNumber {
     public static enum Order {
@@ -13,8 +9,8 @@ public class ProposalNumber {
         GREATER
     }
 
-    private final ProcessId processId;
-    private final int sequenceNumber;
+    public final ProcessId processId;
+    public final int sequenceNumber;
 
     public ProposalNumber() {
         this.processId = null;
@@ -24,10 +20,6 @@ public class ProposalNumber {
     public ProposalNumber(ProcessId host, int sequenceNumber) {
         this.processId = host;
         this.sequenceNumber = sequenceNumber;
-    }
-
-    public int getSequenceNumber() {
-        return sequenceNumber;
     }
 
     public Order compare(ProposalNumber other) {
@@ -47,21 +39,6 @@ public class ProposalNumber {
                 return Order.GREATER;
         }
     }
-
-    public static final ISerializer<ProposalNumber> serializer = new ISerializer<ProposalNumber>() {
-        @Override
-        public void serialize(ProposalNumber messageNumber, ByteBuf out) throws IOException {
-            ProcessId.serializer.serialize(messageNumber.processId, out);
-            out.writeInt(messageNumber.sequenceNumber);
-        }
-
-        @Override
-        public ProposalNumber deserialize(ByteBuf in) throws IOException {
-            var host = ProcessId.serializer.deserialize(in);
-            var number = in.readInt();
-            return new ProposalNumber(host, number);
-        }
-    };
 
     @Override
     public int hashCode() {

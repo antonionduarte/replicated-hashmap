@@ -1,35 +1,15 @@
 package asd.paxos.proposal;
 
-import java.io.IOException;
 import java.util.Arrays;
 
-import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.network.ISerializer;
-
 public class ProposalValue {
-    private final byte[] data;
-    private final ProposalValueHash hash;
+    public final byte[] data;
+    public final ProposalValueHash hash;
 
     public ProposalValue(byte[] data) {
         this.data = data;
         this.hash = ProposalValueHash.fromData(data);
     }
-
-    public static final ISerializer<ProposalValue> serializer = new ISerializer<ProposalValue>() {
-        @Override
-        public void serialize(ProposalValue msg, ByteBuf buf) throws IOException {
-            buf.writeInt(msg.data.length);
-            buf.writeBytes(msg.data);
-        }
-
-        @Override
-        public ProposalValue deserialize(ByteBuf buf) throws IOException {
-            int length = buf.readInt();
-            byte[] data = new byte[length];
-            buf.readBytes(data);
-            return new ProposalValue(data);
-        }
-    };
 
     @Override
     public int hashCode() {

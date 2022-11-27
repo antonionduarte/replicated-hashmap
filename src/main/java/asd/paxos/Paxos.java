@@ -11,11 +11,13 @@ public class Paxos {
     private final PaxosIO paxosIO;
     private final Proposer proposer;
     private final Acceptor acceptor;
+    private final Learner learner;
 
     public Paxos(PaxosIO paxosIO, List<ProcessId> membership) {
         this.paxosIO = paxosIO;
         this.proposer = new Proposer(paxosIO, membership, membership);
         this.acceptor = new Acceptor(paxosIO);
+        this.learner = new Learner(paxosIO);
     }
 
     public ProcessId getProcessId() {
@@ -43,5 +45,6 @@ public class Paxos {
     }
 
     public void receiveDecide(ProcessId processId, ProposalValue proposal) {
+        this.learner.onDecide(proposal);
     }
 }

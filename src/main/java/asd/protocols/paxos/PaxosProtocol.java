@@ -3,16 +3,21 @@ package asd.protocols.paxos;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import asd.paxos.Paxos;
+import asd.paxos.PaxosIO;
+import asd.paxos.ProcessId;
+import asd.paxos.proposal.Proposal;
+import asd.paxos.proposal.ProposalNumber;
+import asd.paxos.proposal.ProposalValue;
 import asd.protocols.agreement.Agreement;
+import asd.protocols.paxos.notifications.DecidedNotification;
 import asd.protocols.paxos.messages.AcceptOkMessage;
 import asd.protocols.paxos.messages.AcceptRequestMessage;
 import asd.protocols.paxos.messages.DecidedMessage;
@@ -33,43 +38,71 @@ public class PaxosProtocol extends GenericProtocol {
     public final static short ID = Agreement.PROTOCOL_ID;
     public final static String NAME = "Paxos";
 
-    private static class PaxosInstance {
-        // Common
-        public final Set<Host> membership;
+    private static class IO implements PaxosIO {
+        public final PaxosProtocol protocol;
+        public final ProcessId processId;
+        public final int instance;
 
-        // Proposer
-        public Proposal proposal;
-        public int currentPrepareOkCount;
-        public boolean sentAcceptRequest;
-        public int currentAcceptOkCount;
-
-        // Acceptor
-        public ProposalNumber highestPromise;
-        public Optional<Proposal> highestAccept;
-
-        public PaxosInstance(Set<Host> membership) {
-            this.membership = membership;
-
-            // Proposer
-            this.proposal = null;
-            this.currentPrepareOkCount = 0;
-            this.sentAcceptRequest = false;
-            this.currentAcceptOkCount = 0;
-
-            // Acceptor
-            this.highestPromise = new ProposalNumber();
-            this.highestAccept = Optional.empty();
+        public IO(PaxosProtocol protocol, ProcessId processId, int instance) {
+            this.protocol = protocol;
+            this.processId = processId;
+            this.instance = instance;
         }
 
-        public int quoromSize() {
-            return membership.size() / 2 + 1;
+        @Override
+        public ProcessId getProcessId() {
+            return this.processId;
+        }
+
+        @Override
+        public void decided(ProposalValue value) {
+            var pair = PaxosBabel.operationFromBytes(value.data);
+            var operationId = pair.getLeft();
+            var operation = pair.getRight();
+            var notification = new DecidedNotification(this.instance, operationId, operation);
+            logger.trace("Decided UUID {} with payload size {}", operationId, operation.length);
+            this.protocol.triggerNotification(notification);
+        }
+
+        @Override
+        public void sendPrepareRequest(ProcessId processId, ProposalNumber proposalNumber) {
+            var message = new PrepareRequestMessage(this.instance, proposalNumber);
+            this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
+        }
+
+        @Override
+        public void sendPrepareOk(
+                ProcessId processId,
+                ProposalNumber proposalNumber,
+                Optional<Proposal> highestAccept) {
+            var message = new PrepareOkMessage(this.instance, proposalNumber, highestAccept);
+            this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
+        }
+
+        @Override
+        public void sendAcceptRequest(ProcessId processId, Proposal proposal) {
+            var message = new AcceptRequestMessage(this.instance, proposal);
+            this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
+        }
+
+        @Override
+        public void sendAcceptOk(ProcessId processId, ProposalNumber proposalNumber) {
+            var message = new AcceptOkMessage(this.instance, proposalNumber);
+            this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
+        }
+
+        @Override
+        public void sendDecide(ProcessId processId, ProposalValue proposal) {
+            var message = new DecidedMessage(this.instance, proposal);
+            this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
         }
     }
 
     private Host self;
-    private final HashMap<Integer, PaxosInstance> instances;
+    private ProcessId selfProcessId;
+    private final HashMap<Integer, Paxos> instances;
     private int nextInstance;
-    private List<Host> latestMembership;
+    private List<ProcessId> latestMembership;
 
     public PaxosProtocol() throws HandlerRegistrationException {
         super(NAME, ID);
@@ -102,87 +135,77 @@ public class PaxosProtocol extends GenericProtocol {
     private void onAcceptOk(AcceptOkMessage msg, Host host, short sourceProto, int channelId) {
         logger.info("Received AcceptOkMessage {} from {}", msg, host);
 
-        var paxosInstance = instances.get(msg.instance);
-        if (!msg.messageNumber.equals(paxosInstance.proposal.number))
+        var instance = this.instances.get(msg.instance);
+        if (instance == null) {
+            logger.warn("Received AcceptOkMessage for unknown instance {}", msg.instance);
             return;
+        }
 
-        paxosInstance.currentAcceptOkCount++;
-        if (paxosInstance.currentAcceptOkCount != paxosInstance.quoromSize())
-            return;
-
-        logger.info("Proposed value {} was decided", paxosInstance.proposal.value);
-        var message = new DecidedMessage(msg.instance, paxosInstance.proposal.value);
-        for (var replica : paxosInstance.membership)
-            this.sendMessage(message, replica);
+        var processId = PaxosBabel.hostToProcessId(host);
+        instance.receiveAcceptOk(processId, msg.messageNumber);
     }
 
     private void onAcceptRequest(AcceptRequestMessage msg, Host host, short sourceProto, int channelId) {
         logger.info("Received AcceptRequestMessage {} from {}", msg, host);
 
-        var paxosInstance = instances.get(msg.instance);
-        if (msg.proposal.number.compare(paxosInstance.highestPromise) == ProposalNumber.Order.LESS)
+        var instance = this.instances.get(msg.instance);
+        if (instance == null) {
+            logger.warn("Received AcceptRequestMessage for unknown instance {}", msg.instance);
             return;
+        }
 
-        paxosInstance.highestPromise = msg.proposal.number;
-        paxosInstance.highestAccept = Optional.of(msg.proposal);
-
-        var message = new AcceptOkMessage(msg.instance, msg.proposal.number);
-        this.sendMessage(message, host);
+        var processId = PaxosBabel.hostToProcessId(host);
+        instance.receiveAcceptRequest(processId, msg.proposal);
     }
 
     private void onDecided(DecidedMessage msg, Host host, short sourceProto, int channelId) {
         logger.info("Received DecidedMessage {} from {}", msg, host);
 
+        var instance = this.instances.get(msg.instance);
+        if (instance == null) {
+            logger.warn("Received DecidedMessage for unknown instance {}", msg.instance);
+            return;
+        }
+
+        var processId = PaxosBabel.hostToProcessId(host);
+        instance.receiveDecide(processId, msg.value);
     }
 
     private void onPrepareOk(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
         logger.info("Received PrepareOkMessage {} from {}", msg, host);
 
-        var paxosInstance = this.instances.get(msg.instance);
-        if (!paxosInstance.proposal.number.equals(msg.proposalNumber))
+        var instance = this.instances.get(msg.instance);
+        if (instance == null) {
+            logger.warn("Received PrepareOkMessage for unknown instance {}", msg.instance);
             return;
+        }
 
-        paxosInstance.currentPrepareOkCount++;
-        if (paxosInstance.currentPrepareOkCount < paxosInstance.quoromSize())
-            return;
-
-        if (paxosInstance.sentAcceptRequest)
-            return;
-
-        paxosInstance.sentAcceptRequest = true;
-        var request = new AcceptRequestMessage(msg.instance, paxosInstance.proposal);
-        for (var replica : paxosInstance.membership)
-            this.sendMessage(request, replica);
+        var processId = PaxosBabel.hostToProcessId(host);
+        instance.receivePrepareOk(processId, msg.proposalNumber, msg.acceptedProposal);
     }
 
     private void onPrepareRequest(PrepareRequestMessage msg, Host host, short sourceProto, int channelId) {
         logger.info("Received PrepareRequestMessage {} from {}", msg, host);
 
-        var paxosInstance = this.instances.computeIfAbsent(msg.instance,
-                (__) -> new PaxosInstance(new HashSet<>(this.latestMembership)));
-
-        if (msg.proposalNumber.compare(paxosInstance.highestPromise) != ProposalNumber.Order.GREATER)
+        var instance = this.instances.get(msg.instance);
+        if (instance == null) {
+            logger.warn("Received PrepareRequestMessage for unknown instance {}", msg.instance);
             return;
+        }
 
-        paxosInstance.highestPromise = msg.proposalNumber;
-        var message = new PrepareOkMessage(msg.instance, msg.proposalNumber, paxosInstance.highestAccept);
-        this.sendMessage(message, host);
+        var processId = PaxosBabel.hostToProcessId(host);
+        instance.receivePrepareRequest(processId, msg.proposalNumber);
     }
 
     /*--------------------------------- Request Handlers ---------------------------------------- */
 
     private void onProposeRequest(ProposeRequest request, short sourceProto) {
         logger.info("Received propose request {}", request);
+        logger.trace("Propose request payload size {}", request.operation.length);
 
-        var instance = this.nextInstance++;
-        var paxosInstance = new PaxosInstance(new HashSet<>(this.latestMembership));
-        this.instances.put(instance, paxosInstance);
-
-        var proposalNumber = new ProposalNumber(this.self, paxosInstance.highestPromise.getSequenceNumber() + 1);
-        var message = new PrepareRequestMessage(instance, proposalNumber);
-        paxosInstance.proposal = new Proposal(proposalNumber, request.operation);
-        for (var replica : paxosInstance.membership)
-            this.sendMessage(message, replica);
+        var instance = this.instances.get(0);
+        var payload = PaxosBabel.operationToBytes(request.operationId, request.operation);
+        instance.propose(new ProposalValue(payload));
     }
 
     private void onAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
@@ -203,6 +226,7 @@ public class PaxosProtocol extends GenericProtocol {
         var channelId = notification.getChannelId();
         this.registerSharedChannel(channelId);
         this.self = notification.getMyself();
+        this.selfProcessId = PaxosBabel.hostToProcessId(this.self);
 
         /*--------------------- Register Message Serializers ---------------------- */
         this.registerMessageSerializer(channelId, AcceptOkMessage.ID, AcceptOkMessage.serializer);
@@ -226,6 +250,9 @@ public class PaxosProtocol extends GenericProtocol {
     private void onJoined(JoinedNotification notification, short sourceProto) {
         logger.info("Joined notification received: {}", notification);
 
-        this.latestMembership = notification.membership;
+        this.latestMembership = notification.membership.stream().map(PaxosBabel::hostToProcessId).toList();
+        for (; this.nextInstance <= notification.joinInstance; ++this.nextInstance)
+            this.instances.put(this.nextInstance,
+                    new Paxos(new IO(this, this.selfProcessId, this.nextInstance), this.latestMembership));
     }
 }

@@ -1,8 +1,5 @@
 package asd;
 
-import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
-import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
-
 import java.io.IOException;
 import java.util.Properties;
 import java.util.Scanner;
@@ -11,9 +8,16 @@ import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.app.HashApp;
+import asd.protocols.app.requests.GetRequest;
+import asd.protocols.app.requests.GetResponse;
+import asd.protocols.app.requests.PutRequest;
+import asd.protocols.app.requests.PutResponse;
 import asd.protocols.statemachine.StateMachine;
+import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
+import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
+import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 
 public class InteractivePaxos extends GenericProtocol {
     private static final Logger logger = LogManager.getLogger(InteractivePaxos.class);
@@ -21,20 +25,22 @@ public class InteractivePaxos extends GenericProtocol {
     public static final short ID = 8000;
     public static final String NAME = "Interactive Paxos";
 
-    private final PaxosProtocol paxos;
-
-    public InteractivePaxos(PaxosProtocol kad) throws HandlerRegistrationException {
+    public InteractivePaxos() throws HandlerRegistrationException {
         super(NAME, ID);
-        this.paxos = kad;
 
+        this.subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::onChannelReady);
+        this.registerReplyHandler(GetResponse.ID, this::onGetResponse);
+        this.registerReplyHandler(PutResponse.ID, this::onPutResponse);
     }
 
     @Override
     public void init(Properties props) throws HandlerRegistrationException, IOException {
+        var protocol = this;
         new Thread(new Runnable() {
 
             @Override
             public void run() {
+                long opid = 0;
                 try (var scanner = new Scanner(System.in)) {
                     while (true) {
                         var line = scanner.nextLine();
@@ -49,6 +55,19 @@ public class InteractivePaxos extends GenericProtocol {
                                 sendRequest(request, StateMachine.PROTOCOL_ID);
                                 logger.info("Sent order request {}", request);
                             }
+                            case "get" -> {
+                                var key = components[1];
+                                var message = new GetRequest(opid++, key);
+                                logger.info("SENDING READ {}", message.operationId);
+                                protocol.sendRequest(message, HashApp.PROTO_ID);
+                            }
+                            case "set" -> {
+                                var key = components[1];
+                                var value = components[2];
+                                var message = new PutRequest(opid++, key, value.getBytes());
+                                logger.info("SENDING WRITE {}", message.operationId);
+                                protocol.sendRequest(message, HashApp.PROTO_ID);
+                            }
                             default -> System.out.println("Unknown command " + components[0]);
                         }
                     }
@@ -56,5 +75,18 @@ public class InteractivePaxos extends GenericProtocol {
             }
 
         }).start();
+    }
+
+    private void onChannelReady(ChannelReadyNotification notification, short sourceProto) {
+        var channelId = notification.getChannelId();
+        this.registerSharedChannel(channelId);
+    }
+
+    private void onGetResponse(GetResponse notification, short sourceProto) {
+        logger.info("Received get response {} = {}", notification.operationId, new String(notification.value));
+    }
+
+    private void onPutResponse(PutResponse notification, short sourceProto) {
+        logger.info("Received put response {}", notification.operationId);
     }
 }

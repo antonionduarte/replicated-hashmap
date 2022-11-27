@@ -2,7 +2,8 @@ package asd.protocols.paxos.messages;
 
 import java.io.IOException;
 
-import asd.protocols.paxos.ProposalNumber;
+import asd.paxos.proposal.ProposalNumber;
+import asd.protocols.paxos.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -25,13 +26,13 @@ public class PrepareRequestMessage extends ProtoMessage {
         @Override
         public void serialize(PrepareRequestMessage prepareRequestMessage, ByteBuf out) throws IOException {
             out.writeInt(prepareRequestMessage.instance);
-            ProposalNumber.serializer.serialize(prepareRequestMessage.proposalNumber, out);
+            PaxosBabel.proposalNumberSerializer.serialize(prepareRequestMessage.proposalNumber, out);
         }
 
         @Override
         public PrepareRequestMessage deserialize(ByteBuf in) throws IOException {
             int instance = in.readInt();
-            ProposalNumber messageNumber = ProposalNumber.serializer.deserialize(in);
+            ProposalNumber messageNumber = PaxosBabel.proposalNumberSerializer.deserialize(in);
             return new PrepareRequestMessage(instance, messageNumber);
         }
     };

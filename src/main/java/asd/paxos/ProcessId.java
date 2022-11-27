@@ -1,10 +1,5 @@
 package asd.paxos;
 
-import java.io.IOException;
-
-import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.network.ISerializer;
-
 public class ProcessId implements Comparable<ProcessId> {
     private final long id;
 
@@ -12,17 +7,9 @@ public class ProcessId implements Comparable<ProcessId> {
         this.id = id;
     }
 
-    public static final ISerializer<ProcessId> serializer = new ISerializer<ProcessId>() {
-        @Override
-        public void serialize(ProcessId processId, ByteBuf out) throws IOException {
-            out.writeLong(processId.id);
-        }
-
-        @Override
-        public ProcessId deserialize(ByteBuf in) throws IOException {
-            return new ProcessId(in.readLong());
-        }
-    };
+    public long getId() {
+        return id;
+    }
 
     @Override
     public int compareTo(ProcessId o) {
