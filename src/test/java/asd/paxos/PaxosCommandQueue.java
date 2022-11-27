@@ -1,6 +1,10 @@
 package asd.paxos;
 
+import static org.junit.Assert.assertEquals;
+
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 
@@ -71,4 +75,15 @@ public class PaxosCommandQueue {
         return this.queue.remove();
     }
 
+    public List<Command> popAll() {
+        var commands = new ArrayList<Command>();
+        while (!this.queue.isEmpty()) {
+            commands.add(this.queue.remove());
+        }
+        return commands;
+    }
+
+    public boolean isEmpty() {
+        return this.queue.isEmpty();
+    }
 }

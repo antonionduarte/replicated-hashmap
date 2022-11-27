@@ -28,8 +28,8 @@ public class Command {
     public static record Decide(ProcessId processId, ProposalValue proposal) {
     }
 
-    private ProcessId sender;
-    private Object command;
+    public final ProcessId sender;
+    public final Object command;
 
     private Command(ProcessId sender, Object command) {
         this.sender = sender;

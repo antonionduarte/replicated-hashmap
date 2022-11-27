@@ -17,8 +17,13 @@ public class ProposalNumber {
         this.sequenceNumber = 0;
     }
 
-    public ProposalNumber(ProcessId host, int sequenceNumber) {
-        this.processId = host;
+    public ProposalNumber(long processId, int sequenceNumber) {
+        this.processId = new ProcessId(processId);
+        this.sequenceNumber = sequenceNumber;
+    }
+
+    public ProposalNumber(ProcessId processId, int sequenceNumber) {
+        this.processId = processId;
         this.sequenceNumber = sequenceNumber;
     }
 

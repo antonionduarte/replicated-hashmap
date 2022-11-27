@@ -11,6 +11,10 @@ public class ProposalValue {
         this.hash = ProposalValueHash.fromData(data);
     }
 
+    public ProposalValue(String data) {
+        this(data.getBytes());
+    }
+
     @Override
     public int hashCode() {
         final int prime = 31;
