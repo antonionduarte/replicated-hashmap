@@ -1,7 +1,6 @@
 package asd.paxos;
 
-import static org.junit.Assert.assertEquals;
-
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +56,16 @@ public class PaxosCommandQueue {
         @Override
         public void sendDecide(ProcessId processId, ProposalValue proposal) {
             this.queue.add(Command.from(this.processId, new Command.Decide(processId, proposal)));
+        }
+
+        @Override
+        public void setupTimer(int timerId, Duration interval) {
+            this.queue.add(Command.from(this.processId, new Command.SetupTimer(timerId, interval)));
+        }
+
+        @Override
+        public void cancelTimer(int timerId) {
+            this.queue.add(Command.from(this.processId, new Command.CancelTimer(timerId)));
         }
 
     }

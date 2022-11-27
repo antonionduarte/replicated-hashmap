@@ -1,6 +1,7 @@
 package asd.protocols.paxos;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +28,7 @@ import asd.protocols.paxos.notifications.JoinedNotification;
 import asd.protocols.paxos.requests.AddReplicaRequest;
 import asd.protocols.paxos.requests.ProposeRequest;
 import asd.protocols.paxos.requests.RemoveReplicaRequest;
+import asd.protocols.paxos.timer.PaxosIoTimer;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
@@ -42,11 +44,13 @@ public class PaxosProtocol extends GenericProtocol {
         public final PaxosProtocol protocol;
         public final ProcessId processId;
         public final int instance;
+        public final HashMap<Integer, Long> timers;
 
         public IO(PaxosProtocol protocol, ProcessId processId, int instance) {
             this.protocol = protocol;
             this.processId = processId;
             this.instance = instance;
+            this.timers = new HashMap<>();
         }
 
         @Override
@@ -96,6 +100,24 @@ public class PaxosProtocol extends GenericProtocol {
             var message = new DecidedMessage(this.instance, proposal);
             this.protocol.sendMessage(message, PaxosBabel.hostFromProcessId(processId));
         }
+
+        @Override
+        public void setupTimer(int timerId, Duration interval) {
+            var milliseconds = interval.toMillis();
+            var timer = new PaxosIoTimer(this.instance, timerId);
+            var oldBabelTimerId = this.timers.remove(timerId);
+            if (oldBabelTimerId != null)
+                this.protocol.cancelTimer(oldBabelTimerId);
+            var babelTimerId = this.protocol.setupPeriodicTimer(timer, milliseconds, milliseconds);
+            this.timers.put(timerId, babelTimerId);
+        }
+
+        @Override
+        public void cancelTimer(int timerId) {
+            var babelTimerId = this.timers.get(timerId);
+            if (babelTimerId != null)
+                this.protocol.cancelTimer(babelTimerId);
+        }
     }
 
     private final int paxos_alpha;
@@ -116,6 +138,7 @@ public class PaxosProtocol extends GenericProtocol {
         this.latestMembership = new ArrayList<>();
 
         /*--------------------- Register Timer Handlers ----------------------------- */
+        this.registerTimerHandler(PaxosIoTimer.ID, this::onPaxosIoTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         this.registerRequestHandler(ProposeRequest.ID, this::onProposeRequest);
@@ -132,6 +155,14 @@ public class PaxosProtocol extends GenericProtocol {
 
     @Override
     public void init(Properties props) throws HandlerRegistrationException, IOException {
+    }
+
+    /*--------------------------------- Timer  Handlers ---------------------------------------- */
+
+    private void onPaxosIoTimer(PaxosIoTimer timer, long timerId) {
+        var instance = timer.instance;
+        var paxos = this.instances.get(instance);
+        paxos.triggerTimer(timer.timerId);
     }
 
     /*--------------------------------- Message Handlers ---------------------------------------- */

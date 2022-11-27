@@ -1,5 +1,6 @@
 package asd.paxos;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import asd.paxos.proposal.Proposal;
@@ -28,6 +29,12 @@ public class Command {
     public static record Decide(ProcessId processId, ProposalValue proposal) {
     }
 
+    public static record SetupTimer(int timerId, Duration interval) {
+    }
+
+    public static record CancelTimer(int timerId) {
+    }
+
     public final ProcessId sender;
     public final Object command;
 
@@ -42,7 +49,9 @@ public class Command {
                 || command instanceof PrepareOk
                 || command instanceof AcceptRequest
                 || command instanceof AcceptOk
-                || command instanceof Decide;
+                || command instanceof Decide
+                || command instanceof SetupTimer
+                || command instanceof CancelTimer;
         return new Command(sender, command);
     }
 
@@ -96,6 +105,22 @@ public class Command {
 
     public Decide getDecide() {
         return (Decide) command;
+    }
+
+    public boolean isSetupTimer() {
+        return command instanceof SetupTimer;
+    }
+
+    public SetupTimer getSetupTimer() {
+        return (SetupTimer) command;
+    }
+
+    public boolean isCancelTimer() {
+        return command instanceof CancelTimer;
+    }
+
+    public CancelTimer getCancelTimer() {
+        return (CancelTimer) command;
     }
 
 }

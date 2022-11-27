@@ -3,6 +3,7 @@ package asd.paxos;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Optional;
@@ -23,7 +24,8 @@ public class ProposerTest {
         var proposer = new Proposer(
                 queue.getIO(membership.proposers[0]),
                 membership.acceptorList(),
-                membership.learnerList());
+                membership.learnerList(),
+                Duration.ofSeconds(1));
 
         proposer.propose(new ProposalValue("test"));
         {
@@ -44,7 +46,8 @@ public class ProposerTest {
         var proposer = new Proposer(
                 queue.getIO(membership.proposers[0]),
                 membership.acceptorList(),
-                membership.learnerList());
+                membership.learnerList(),
+                Duration.ofSeconds(1));
 
         proposer.propose(new ProposalValue("test"));
         queue.popAll();
@@ -73,7 +76,8 @@ public class ProposerTest {
         var proposer = new Proposer(
                 queue.getIO(membership.proposers[0]),
                 membership.acceptorList(),
-                membership.learnerList());
+                membership.learnerList(),
+                Duration.ofSeconds(1));
 
         proposer.propose(new ProposalValue("test"));
         queue.popAll();
@@ -94,7 +98,8 @@ public class ProposerTest {
         var proposer = new Proposer(
                 queue.getIO(membership.proposers[0]),
                 membership.acceptorList(),
-                membership.learnerList());
+                membership.learnerList(),
+                Duration.ofSeconds(1));
 
         proposer.propose(new ProposalValue("test"));
         queue.popAll();

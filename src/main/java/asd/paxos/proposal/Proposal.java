@@ -9,6 +9,14 @@ public class Proposal {
         this.value = value;
     }
 
+    public Proposal withIncSeqNumber() {
+        return this.withIncSeqNumber(1);
+    }
+
+    public Proposal withIncSeqNumber(int inc) {
+        return new Proposal(this.number.withIncSeqNumber(inc), this.value);
+    }
+
     @Override
     public String toString() {
         return "Proposal [number=" + number + ", value=" + value + "]";

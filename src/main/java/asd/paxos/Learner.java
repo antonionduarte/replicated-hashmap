@@ -2,7 +2,7 @@ package asd.paxos;
 
 import asd.paxos.proposal.ProposalValue;
 
-public class Learner {
+class Learner {
     private final PaxosIO paxosIO;
     private ProposalValue value;
 
@@ -13,6 +13,10 @@ public class Learner {
 
     public ProcessId getProcessId() {
         return paxosIO.getProcessId();
+    }
+
+    public boolean hasDecided() {
+        return this.value != null;
     }
 
     public void onDecide(ProposalValue value) {

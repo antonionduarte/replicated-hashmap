@@ -27,6 +27,14 @@ public class ProposalNumber {
         this.sequenceNumber = sequenceNumber;
     }
 
+    public ProposalNumber withIncSeqNumber() {
+        return this.withIncSeqNumber(1);
+    }
+
+    public ProposalNumber withIncSeqNumber(int inc) {
+        return new ProposalNumber(this.processId, this.sequenceNumber + inc);
+    }
+
     public Order compare(ProposalNumber other) {
         if (this.sequenceNumber < other.sequenceNumber) {
             return Order.LESS;

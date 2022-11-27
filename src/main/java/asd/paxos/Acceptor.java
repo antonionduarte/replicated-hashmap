@@ -5,7 +5,7 @@ import java.util.Optional;
 import asd.paxos.proposal.Proposal;
 import asd.paxos.proposal.ProposalNumber;
 
-public class Acceptor {
+class Acceptor {
     private final PaxosIO paxosIO;
     private ProposalNumber highestPromise;
     private Optional<Proposal> highestAccept;

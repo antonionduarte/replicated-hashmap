@@ -1,5 +1,6 @@
 package asd.paxos;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import asd.paxos.proposal.Proposal;
@@ -18,7 +19,7 @@ public interface PaxosIO {
      * Called when this instance of paxos has decided on a value.
      * Only called once per paxos instance.
      * 
-     * @param proposedValue
+     * @param proposedValue The value that has been decided.
      */
     void decided(ProposalValue proposedValue);
 
@@ -63,4 +64,22 @@ public interface PaxosIO {
      * @param proposal  The proposal value that was decided.
      */
     void sendDecide(ProcessId processId, ProposalValue proposal);
+
+    /**
+     * Create a periodic timer with the given interval.
+     * If the given timerId is already in use, the old timer is cancelled and a new
+     * one is created. The first timer event is sent after the given interval.
+     * 
+     * @param timerId  The id of the timer.
+     * @param interval The interval of the timer.
+     */
+    void setupTimer(int timerId, Duration interval);
+
+    /**
+     * Cancel the timer with the given timerId.
+     * Calling this method on a timer that does not exit has no effect.
+     * 
+     * @param timerId The id of the timer to cancel.
+     */
+    void cancelTimer(int timerId);
 }
