@@ -98,14 +98,18 @@ public class PaxosProtocol extends GenericProtocol {
         }
     }
 
+    private final int paxos_alpha;
+
     private Host self;
     private ProcessId selfProcessId;
     private final HashMap<Integer, Paxos> instances;
     private int nextInstance;
     private List<ProcessId> latestMembership;
 
-    public PaxosProtocol() throws HandlerRegistrationException {
+    public PaxosProtocol(Properties props) throws HandlerRegistrationException {
         super(NAME, ID);
+
+        this.paxos_alpha = Integer.parseInt(props.getProperty("paxos_alpha"));
 
         this.instances = new HashMap<>();
         this.nextInstance = 0;

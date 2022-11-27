@@ -43,7 +43,7 @@ public class PaxosMain {
         // the channels.
         addInterfaceIp(props);
 
-        var paxos = new PaxosProtocol();
+        var paxos = new PaxosProtocol(props);
         var ipaxos = new InteractivePaxos();
         var statemachine = new StateMachine(props);
         var hashmapapp = new HashApp(props);
