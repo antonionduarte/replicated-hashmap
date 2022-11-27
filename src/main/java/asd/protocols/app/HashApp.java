@@ -53,8 +53,8 @@ public class HashApp extends GenericProtocol {
 		clientIdMapperReq = new TreeMap<>();
 		cumulativeHash = new byte[0];
 
-		String address = properties.getProperty("address");
-		String port = properties.getProperty("server_port");
+		String address = properties.getProperty("babel_address");
+		String port = properties.getProperty("hashapp_port");
 		logger.info("Listening on {}:{}", address, port);
 
 		// We are using a ServerChannel here, which does not create connections,

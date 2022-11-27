@@ -59,8 +59,8 @@ public class StateMachine extends GenericProtocol {
 		super(PROTOCOL_NAME, PROTOCOL_ID);
 		nextInstance = 0;
 
-		String address = props.getProperty("address");
-		String port = props.getProperty("p2p_port");
+		String address = props.getProperty("babel_address");
+		String port = props.getProperty("statemachine_port");
 
 		logger.info("Listening on {}:{}", address, port);
 		this.self = new Host(InetAddress.getByName(address), Integer.parseInt(port));
@@ -99,7 +99,7 @@ public class StateMachine extends GenericProtocol {
 		// constructor
 		triggerNotification(new ChannelReadyNotification(channelId, self));
 
-		String host = props.getProperty("initial_membership");
+		String host = props.getProperty("statemachine_initial_membership");
 		System.out.println("MEMBERSHIP = " + host);
 		String[] hosts = host.split(",");
 		List<Host> initialMembership = new LinkedList<>();
@@ -109,7 +109,7 @@ public class StateMachine extends GenericProtocol {
 			try {
 				h = new Host(InetAddress.getByName(hostElements[0]), Integer.parseInt(hostElements[1]));
 			} catch (UnknownHostException e) {
-				throw new AssertionError("Error parsing initial_membership", e);
+				throw new AssertionError("Error parsing statemachine_initial_membership", e);
 			}
 			initialMembership.add(h);
 		}

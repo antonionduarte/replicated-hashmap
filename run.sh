@@ -23,4 +23,4 @@ watchexec \
 	--restart \
 	--clear \
 	--watch target/asdProj.jar \
-	"java -ea -cp target/asdProj.jar:./ asd.PaxosMain -conf config.properties address=localhost p2p_port=$P2P_PORT server_port=$SERVER_PORT initial_membership=$MEMBERSHIP"
+	"java -ea -cp target/asdProj.jar:./ asd.PaxosMain -conf config.properties babel_address=localhost statemachine_port=$P2P_PORT hashapp_port=$SERVER_PORT statemachine_initial_membership=$MEMBERSHIP"

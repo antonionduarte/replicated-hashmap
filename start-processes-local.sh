@@ -23,7 +23,7 @@ done
 
 i=0
 while [ $i -lt $processes ]; do
-  java -DlogFilename=logs/node$(($base_p2p_port + $i)) -cp target/asdProj.jar:./ asd.Main -conf config.properties address=localhost p2p_port=$(($base_p2p_port + $i)) server_port=$(($base_server_port + $i)) initial_membership=$membership 2>&1 | sed "s/^/[$(($base_p2p_port + $i))] /" &
+  java -DlogFilename=logs/node$(($base_p2p_port + $i)) -cp target/asdProj.jar:./ asd.Main -conf config.properties babel_address=localhost statemachine_port=$(($base_p2p_port + $i)) hashapp_port=$(($base_server_port + $i)) statemachine_initial_membership=$membership 2>&1 | sed "s/^/[$(($base_p2p_port + $i))] /" &
   echo "launched process on p2p port $(($base_p2p_port + $i)), server port $(($base_server_port + $i))"
   sleep 1
   i=$(($i + 1))
