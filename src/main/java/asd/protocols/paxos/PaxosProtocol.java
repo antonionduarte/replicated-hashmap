@@ -34,10 +34,9 @@ import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.network.data.Host;
 
-public class PaxosProtocol extends GenericProtocol {
+public class PaxosProtocol extends GenericProtocol implements Agreement {
     private static final Logger logger = LogManager.getLogger(PaxosProtocol.class);
 
-    public final static short ID = Agreement.PROTOCOL_ID;
     public final static String NAME = "Paxos";
 
     private static class IO implements PaxosIO {
@@ -245,12 +244,10 @@ public class PaxosProtocol extends GenericProtocol {
 
     private void onAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
         logger.info("Received add replica request {}", request);
-
     }
 
     private void onRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
         logger.info("Received remove replica request {}", request);
-
     }
 
     /*--------------------------------- Notification Handlers ---------------------------------------- */
