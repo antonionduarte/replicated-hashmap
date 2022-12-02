@@ -1,8 +1,7 @@
 package asd.protocols.paxos.messages;
 
 import java.io.IOException;
-
-import asd.paxos.proposal.ProposalNumber;
+import asd.paxos2.Ballot;
 import asd.protocols.paxos.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
@@ -13,32 +12,28 @@ public class AcceptOkMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID + 1;
 
     public final int instance;
-    public final ProposalNumber messageNumber;
+    public final Ballot ballot;
 
-    public AcceptOkMessage(int instance, ProposalNumber messageNumber) {
+    public AcceptOkMessage(int instance, Ballot ballot) {
         super(ID);
 
         this.instance = instance;
-        this.messageNumber = messageNumber;
+        this.ballot = ballot;
     }
 
     public static final ISerializer<AcceptOkMessage> serializer = new ISerializer<AcceptOkMessage>() {
         @Override
         public void serialize(AcceptOkMessage acceptOkMessage, ByteBuf out) throws IOException {
             out.writeInt(acceptOkMessage.instance);
-            PaxosBabel.proposalNumberSerializer.serialize(acceptOkMessage.messageNumber, out);
+            PaxosBabel.ballotSerializer.serialize(acceptOkMessage.ballot, out);
         }
 
         @Override
         public AcceptOkMessage deserialize(ByteBuf in) throws IOException {
             int instance = in.readInt();
-            ProposalNumber messageNumber = PaxosBabel.proposalNumberSerializer.deserialize(in);
-            return new AcceptOkMessage(instance, messageNumber);
+            Ballot ballot = PaxosBabel.ballotSerializer.deserialize(in);
+            return new AcceptOkMessage(instance, ballot);
         }
     };
 
-    @Override
-    public String toString() {
-        return "AcceptOkMessage [instance=" + instance + ", messageNumber=" + messageNumber + "]";
-    }
 }

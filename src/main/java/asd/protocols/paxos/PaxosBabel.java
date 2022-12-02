@@ -10,10 +10,10 @@ import org.apache.commons.lang3.tuple.Pair;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
-import asd.paxos.ProcessId;
-import asd.paxos.proposal.Proposal;
-import asd.paxos.proposal.ProposalNumber;
-import asd.paxos.proposal.ProposalValue;
+import asd.paxos2.Ballot;
+import asd.paxos2.ProcessId;
+import asd.paxos2.Proposal;
+import asd.paxos2.ProposalValue;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.network.ISerializer;
 import pt.unl.fct.di.novasys.network.data.Host;
@@ -54,33 +54,29 @@ public class PaxosBabel {
         return Pair.of(operationId, operation);
     }
 
+    public static final ISerializer<Ballot> ballotSerializer = new ISerializer<Ballot>() {
+        @Override
+        public void serialize(Ballot ballot, ByteBuf out) throws IOException {
+            processIdSerializer.serialize(ballot.processId, out);
+            out.writeLong(ballot.sequenceNumber);
+        }
+
+        @Override
+        public Ballot deserialize(ByteBuf in) throws IOException {
+            var processId = processIdSerializer.deserialize(in);
+            var number = in.readLong();
+            return new Ballot(processId, number);
+        }
+    };
+
     public static final ISerializer<Proposal> proposalSerializer = new ISerializer<Proposal>() {
         @Override
         public void serialize(Proposal msg, ByteBuf buf) throws IOException {
-            PaxosBabel.proposalNumberSerializer.serialize(msg.number, buf);
-            PaxosBabel.proposalValueSerializer.serialize(msg.value, buf);
         }
 
         @Override
         public Proposal deserialize(ByteBuf buf) throws IOException {
-            ProposalNumber messageNumber = PaxosBabel.proposalNumberSerializer.deserialize(buf);
-            ProposalValue value = PaxosBabel.proposalValueSerializer.deserialize(buf);
-            return new Proposal(messageNumber, value);
-        }
-    };
-
-    public static final ISerializer<ProposalNumber> proposalNumberSerializer = new ISerializer<ProposalNumber>() {
-        @Override
-        public void serialize(ProposalNumber messageNumber, ByteBuf out) throws IOException {
-            PaxosBabel.processIdSerializer.serialize(messageNumber.processId, out);
-            out.writeInt(messageNumber.sequenceNumber);
-        }
-
-        @Override
-        public ProposalNumber deserialize(ByteBuf in) throws IOException {
-            var host = PaxosBabel.processIdSerializer.deserialize(in);
-            var number = in.readInt();
-            return new ProposalNumber(host, number);
+            return null;
         }
     };
 

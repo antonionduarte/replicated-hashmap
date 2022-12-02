@@ -13,6 +13,8 @@ public class ProcessId implements Comparable<ProcessId> {
 
     @Override
     public int compareTo(ProcessId o) {
+        if (o == null)
+            return 1;
         return Long.compare(this.id, o.id);
     }
 

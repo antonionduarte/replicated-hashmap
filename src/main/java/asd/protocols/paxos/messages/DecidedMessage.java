@@ -1,8 +1,11 @@
 package asd.protocols.paxos.messages;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-import asd.paxos.proposal.ProposalValue;
+import asd.paxos2.ProcessId;
+import asd.paxos2.ProposalValue;
 import asd.protocols.paxos.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
@@ -13,12 +16,14 @@ public class DecidedMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID + 5;
 
     public final int instance;
+    public final List<ProcessId> membership;
     public final ProposalValue value;
 
-    public DecidedMessage(int instance, ProposalValue value) {
+    public DecidedMessage(int instance, List<ProcessId> membership, ProposalValue value) {
         super(ID);
 
         this.instance = instance;
+        this.membership = membership;
         this.value = value;
     }
 
@@ -26,14 +31,21 @@ public class DecidedMessage extends ProtoMessage {
         @Override
         public void serialize(DecidedMessage decidedMessage, ByteBuf out) throws IOException {
             out.writeInt(decidedMessage.instance);
+            out.writeInt(decidedMessage.membership.size());
+            for (var pid : decidedMessage.membership)
+                PaxosBabel.processIdSerializer.serialize(pid, out);
             PaxosBabel.proposalValueSerializer.serialize(decidedMessage.value, out);
         }
 
         @Override
         public DecidedMessage deserialize(ByteBuf in) throws IOException {
             int instance = in.readInt();
-            var value = PaxosBabel.proposalValueSerializer.deserialize(in);
-            return new DecidedMessage(instance, value);
+            int membershipSize = in.readInt();
+            List<ProcessId> membership = new ArrayList<>(membershipSize);
+            for (int i = 0; i < membershipSize; i++)
+                membership.add(PaxosBabel.processIdSerializer.deserialize(in));
+            ProposalValue value = PaxosBabel.proposalValueSerializer.deserialize(in);
+            return new DecidedMessage(instance, membership, value);
         }
     };
 

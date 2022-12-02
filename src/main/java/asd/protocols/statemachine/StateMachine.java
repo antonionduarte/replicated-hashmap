@@ -1,7 +1,6 @@
 package asd.protocols.statemachine;
 
 import asd.protocols.agreement.Agreement;
-import asd.protocols.agreement.requests.RemoveReplicaRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
@@ -10,6 +9,7 @@ import asd.protocols.paxos.notifications.DecidedNotification;
 import asd.protocols.paxos.notifications.JoinedNotification;
 import asd.protocols.paxos.requests.AddReplicaRequest;
 import asd.protocols.paxos.requests.ProposeRequest;
+import asd.protocols.paxos.requests.RemoveReplicaRequest;
 import asd.protocols.statemachine.CommandQueue.OrderedCommand;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
@@ -368,6 +368,8 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
 		logger.debug("Connection to {} is down, cause {}", event.getNode(), event.getCause());
+		if (event.getCause() != null)
+			event.getCause().printStackTrace();
 	}
 
 	private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
@@ -396,6 +398,8 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponInConnectionDown(InConnectionDown event, int channelId) {
 		logger.trace("Connection from {} is down, cause: {}", event.getNode(), event.getCause());
+		if (event.getCause() != null)
+			event.getCause().printStackTrace();
 	}
 
 	/*--------------------------------- Timers ---------------------------------------- */
@@ -412,6 +416,7 @@ public class StateMachine extends GenericProtocol {
 		var batch = this.batchBuilder.build();
 		var command = Command.batch(batch);
 		var request = new ProposeRequest(-1, UUID.randomUUID(), command.toBytes());
+		logger.debug("Sending batch with size: {}", batch.operations.length);
 		this.sendRequest(request, Agreement.ID);
 	}
 

@@ -1,6 +1,12 @@
 package asd.paxos2;
 
 public class Ballot implements Comparable<Ballot> {
+    public static enum Order {
+        LESS,
+        EQUAL,
+        GREATER
+    }
+
     public final ProcessId processId;
     public final long sequenceNumber;
 
@@ -20,6 +26,16 @@ public class Ballot implements Comparable<Ballot> {
 
     public Ballot withIncSeqNumber(long inc) {
         return new Ballot(this.processId, this.sequenceNumber + inc);
+    }
+
+    public Order compare(Ballot other) {
+        var number = this.compareTo(other);
+        if (number == 0)
+            return Order.EQUAL;
+        else if (number < 0)
+            return Order.LESS;
+        else
+            return Order.GREATER;
     }
 
     @Override

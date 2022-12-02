@@ -17,7 +17,7 @@
         <Logger level="info" name="io.netty"/>
         <Logger level="info" name="network"/>
         <Logger level="info" name="channel"/>
-        <Logger level="info" name="babel"/>
+        <Logger level="debug" name="babel"/>
 
         <Root level="info">
             <AppenderRef ref="Console" level="all"/>
