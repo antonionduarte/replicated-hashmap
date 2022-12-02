@@ -52,7 +52,7 @@ public class InteractivePaxos extends GenericProtocol {
                                 var operation = components[1];
                                 var operationId = UUID.randomUUID();
                                 var request = new OrderRequest(operationId, operation.getBytes());
-                                sendRequest(request, StateMachine.PROTOCOL_ID);
+                                sendRequest(request, StateMachine.ID);
                                 logger.info("Sent order request {}", request);
                             }
                             case "get" -> {

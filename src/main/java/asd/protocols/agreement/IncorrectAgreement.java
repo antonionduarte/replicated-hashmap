@@ -44,9 +44,9 @@ public class IncorrectAgreement extends GenericProtocol {
 		/*--------------------- Register Timer Handlers ----------------------------- */
 
 		/*--------------------- Register Request Handlers ----------------------------- */
-		registerRequestHandler(ProposeRequest.REQUEST_ID, this::uponProposeRequest);
-		registerRequestHandler(AddReplicaRequest.REQUEST_ID, this::uponAddReplica);
-		registerRequestHandler(RemoveReplicaRequest.REQUEST_ID, this::uponRemoveReplica);
+		registerRequestHandler(ProposeRequest.ID, this::uponProposeRequest);
+		registerRequestHandler(AddReplicaRequest.ID, this::uponAddReplica);
+		registerRequestHandler(RemoveReplicaRequest.ID, this::uponRemoveReplica);
 
 		/*--------------------- Register Notification Handlers ----------------------------- */
 		subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::uponChannelCreated);

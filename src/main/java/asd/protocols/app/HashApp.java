@@ -102,7 +102,7 @@ public class HashApp extends GenericProtocol {
 		clientIdMapperReq.put(opUUID, Pair.of(sourceProto, request.operationId));
 		Operation op = new Operation(RequestMessage.READ, request.key, new byte[0]);
 		try {
-			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.PROTOCOL_ID);
+			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.ID);
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -115,7 +115,7 @@ public class HashApp extends GenericProtocol {
 		clientIdMapperReq.put(opUUID, Pair.of(sourceProto, request.operationId));
 		Operation op = new Operation(RequestMessage.WRITE, request.key, request.value);
 		try {
-			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.PROTOCOL_ID);
+			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.ID);
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -148,7 +148,7 @@ public class HashApp extends GenericProtocol {
 		clientIdMapper.put(opUUID, Pair.of(host, msg.getOpId()));
 		Operation op = new Operation(msg.getOpType(), msg.getKey(), msg.getData());
 		try {
-			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.PROTOCOL_ID);
+			sendRequest(new OrderRequest(opUUID, op.toByteArray()), StateMachine.ID);
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);

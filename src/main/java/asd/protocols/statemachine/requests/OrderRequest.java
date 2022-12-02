@@ -1,6 +1,6 @@
 package asd.protocols.statemachine.requests;
 
-import org.apache.commons.codec.binary.Hex;
+import asd.AsdUtils;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
 
 import java.util.UUID;
@@ -9,12 +9,12 @@ public class OrderRequest extends ProtoRequest {
 
 	public static final short REQUEST_ID = 201;
 
-	private final UUID opId;
+	private final UUID operationId;
 	private final byte[] operation;
 
 	public OrderRequest(UUID opId, byte[] operation) {
 		super(REQUEST_ID);
-		this.opId = opId;
+		this.operationId = opId;
 		this.operation = operation;
 	}
 
@@ -22,15 +22,13 @@ public class OrderRequest extends ProtoRequest {
 		return operation;
 	}
 
-	public UUID getOpId() {
-		return opId;
+	public UUID getOperationId() {
+		return operationId;
 	}
 
 	@Override
 	public String toString() {
-		return "OrderRequest{" +
-				"opId=" + opId +
-				", operation=" + Hex.encodeHexString(operation) +
-				'}';
+		return "OrderRequest [operationId=" + operationId + ", operation=" + AsdUtils.sha256Hex(this.operation) + "]";
 	}
+
 }

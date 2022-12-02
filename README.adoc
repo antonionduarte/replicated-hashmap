@@ -18,3 +18,23 @@
 | `statemachine_initial_membership`
 | Initial membership.
 |===
+
+== Description
+
+=== Write
+1. `HashApp` receives a write request, for example `put key value`.
+2. `HashApp` sends an `OrderRequest` to the `StateMachine`.
+3. `StateMachine` keeps this request and waits for `x ms`, any operations made during this interval of time are batched.
+4. `StateMachine` sends a `ProposeRequest` to `Paxos` with a `batch` to be proposed.
+5. `Paxos` keeps `batch` 's in a queue and tries to propose them in the next available instance. `Paxos` must persist all proposal values that it accepts.
+6. `Paxos` decides the next `batch` and sends a `Decided` to the `StateMachine`, this includes the instance of the decision.
+7. `StateMachine` receives a `Decided` and tries to "execute" it. If there are still missing `Decided` before this one, then save it and wait for its dependencies.
+8. `StateMachine` "executes" the operation by sending an `Execute` to the `HashApp`.
+
+=== Read
+Same as before but instead of a `put key value` it would be `get key`.
+
+=== JoinRequest
+When a `StateMachine` `A` receives a join request from another `StateMachine` `B` that is not in the current membership then `A` should send a `ProposeRequest` to `Paxos` with this operation, without batching.
+
+When it receives `Decided` from `Paxos` then `A` will serialize its current state in `byte[]` and send it to `B` along with the membership and the instance at which `B` should start participating. This instance should be `+1` of the instance where it was decided that `B` would join.

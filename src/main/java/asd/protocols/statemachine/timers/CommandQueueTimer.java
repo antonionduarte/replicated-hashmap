@@ -2,18 +2,12 @@ package asd.protocols.statemachine.timers;
 
 import asd.protocols.statemachine.StateMachine;
 import pt.unl.fct.di.novasys.babel.generic.ProtoTimer;
-import pt.unl.fct.di.novasys.network.data.Host;
 
-public class RetryTimer extends ProtoTimer {
+public class CommandQueueTimer extends ProtoTimer {
+    public static final short ID = StateMachine.ID + 3;
 
-    public static final short ID = StateMachine.ID + 1;
-
-    public final Host peer;
-
-    public RetryTimer(Host peer) {
+    public CommandQueueTimer() {
         super(ID);
-
-        this.peer = peer;
     }
 
     @Override

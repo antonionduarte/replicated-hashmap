@@ -1,18 +1,23 @@
 package asd.protocols.statemachine;
 
 import asd.protocols.agreement.Agreement;
+import asd.protocols.agreement.requests.RemoveReplicaRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
+import asd.protocols.app.requests.InstallStateRequest;
 import asd.protocols.paxos.notifications.DecidedNotification;
 import asd.protocols.paxos.notifications.JoinedNotification;
 import asd.protocols.paxos.requests.AddReplicaRequest;
 import asd.protocols.paxos.requests.ProposeRequest;
+import asd.protocols.statemachine.CommandQueue.OrderedCommand;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import asd.protocols.statemachine.notifications.ExecuteNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
+import asd.protocols.statemachine.timers.BatchBuildTimer;
+import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
@@ -27,6 +32,7 @@ import pt.unl.fct.di.novasys.network.data.Host;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.*;
 
 /**
@@ -45,9 +51,17 @@ import java.util.*;
  * Do not assume that any logic implemented here is correct, think for yourself!
  */
 public class StateMachine extends GenericProtocol {
+	private static enum OperationType {
+		APP, ADD_REPLICA, REMOVE_REPLICA
+	}
+
+	private static enum State {
+		JOINING, ACTIVE
+	}
+
 	// Protocol information, to register in babel
 	public static final String PROTOCOL_NAME = "StateMachine";
-	public static final short PROTOCOL_ID = 200;
+	public static final short ID = 200;
 	public static final int MAX_RETRIES = 5;
 	public static final int RETRY_AFTER = 100;
 
@@ -61,14 +75,43 @@ public class StateMachine extends GenericProtocol {
 
 	private final Map<Host, Integer> retriesPerPeer;
 	private final Queue<OrderRequest> pendingRequests;
-	//priority queue of instance, execute pairs
+	// priority queue of instance, execute pairs
 	private final Queue<Pair<Integer, Runnable>> pendingExecutes;
 
 	private List<Host> potentialContacts;
 	private Host joiningReplica;
 
+	/// Membership tracking
+	private final Set<Host> initialMembership;
+	private final Set<Host> currentMembership;
+
+	/// JoinRequest tracking
+	// Keeps track of any peers that sent us a join request so we can send them a
+	/// reply.
+	private final Set<Host> joinRequests;
+
+	/// Command Queueing
+	// commandQueueTimer is -1 if no active timer.
+	// after the timer fires, a proposal is made for the first missing instance.
+	private final CommandQueue commandQueue;
+	private final Duration commandQueueTimeout;
+	private long commandQueueTimer;
+
+	/// Duplicate operation tracking
+	// duplicateOperationTtl is the amount of time that we remember an operation id
+	/// after it was executed for the first time.
+	private final Duration duplicateOperationTtl;
+	private final TtlSet<UUID> executedOperations;
+
+	/// Operation batching
+	// batchBuildTimer is -1 if there is no active timer.
+	// after the timer fires, the batch is built and sent to the agreement protocol.
+	private final BatchBuilder batchBuilder;
+	private final Duration batchBuildTimeout;
+	private long batchBuildTimer;
+
 	public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
-		super(PROTOCOL_NAME, PROTOCOL_ID);
+		super(PROTOCOL_NAME, ID);
 		nextInstance = 0;
 		waitingForInstance = 0;
 
@@ -81,6 +124,27 @@ public class StateMachine extends GenericProtocol {
 		this.retriesPerPeer = new HashMap<>();
 		this.pendingRequests = new LinkedList<>();
 		this.pendingExecutes = new PriorityQueue<>(Comparator.comparingInt(Pair::getLeft));
+
+		/// Membership tracking
+		this.initialMembership = new HashSet<>();
+		this.currentMembership = new HashSet<>();
+
+		/// JoinRequest tracking
+		this.joinRequests = new HashSet<>();
+
+		/// Command queueing
+		this.commandQueue = new CommandQueue();
+		this.commandQueueTimeout = Duration.parse(props.getProperty("statemachine_command_queue_timeout"));
+		this.commandQueueTimer = -1;
+
+		/// Duplicate operation tracking
+		this.duplicateOperationTtl = Duration.parse(props.getProperty("statemachine_duplicate_operation_ttl"));
+		this.executedOperations = new TtlSet<>(this.duplicateOperationTtl);
+
+		/// Operation batching
+		this.batchBuilder = new BatchBuilder();
+		this.batchBuildTimeout = Duration.parse(props.getProperty("statemachine_batch_build_timeout"));
+		this.batchBuildTimer = -1;
 
 		Properties channelProps = new Properties();
 		channelProps.setProperty(TCPChannel.ADDRESS_KEY, address);
@@ -99,8 +163,8 @@ public class StateMachine extends GenericProtocol {
 		// registerChannelEventHandler(channelId, ..., this::uponMsgFail);
 
 		/*--------------------- Register Message Handlers ----------------------------- */
-		registerMessageHandler(channelId, SystemJoin.MSG_ID, this::uponSystemJoin);
-		registerMessageHandler(channelId, SystemJoinReply.MSG_ID, this::uponSystemJoinReply);
+		registerMessageHandler(channelId, SystemJoin.ID, this::uponSystemJoin);
+		registerMessageHandler(channelId, SystemJoinReply.ID, this::uponSystemJoinReply);
 
 		/*--------------------- Register Request Handlers ----------------------------- */
 		registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
@@ -111,7 +175,9 @@ public class StateMachine extends GenericProtocol {
 		/*--------------------- Register Notification Handlers ----------------------------- */
 		subscribeNotification(DecidedNotification.ID, this::uponDecidedNotification);
 
-		registerTimerHandler(RetryTimer.TIMER_ID, this::uponRetryTimer);
+		/*--------------------- Register Timer Handlers ----------------------------- */
+		registerTimerHandler(BatchBuildTimer.ID, this::uponBatchBuild);
+		registerTimerHandler(RetryTimer.ID, this::uponRetryTimer);
 	}
 
 	@Override
@@ -133,19 +199,23 @@ public class StateMachine extends GenericProtocol {
 				throw new AssertionError("Error parsing statemachine_initial_membership", e);
 			}
 			initialMembership.add(h);
+			this.initialMembership.add(h);
 		}
 
 		if (initialMembership.contains(self)) {
 			state = State.ACTIVE;
 			logger.info("Starting in ACTIVE as I am part of initial membership");
-			// I'm part of the initial membership, so I'm assuming the system is bootstrapping
+			// I'm part of the initial membership, so I'm assuming the system is
+			// bootstrapping
 			membership = new LinkedList<>(initialMembership);
 			membership.forEach(this::openConnection);
 			triggerNotification(new JoinedNotification(0, membership));
+			initialMembership.forEach(this.currentMembership::add);
 		} else {
 			state = State.JOINING;
 			logger.info("Starting in JOINING as I am not part of initial membership");
-			// You have to do something to join the system and know which instance you joined
+			// You have to do something to join the system and know which instance you
+			// joined
 			// (and copy the state of that instance)
 			potentialContacts = initialMembership;
 			var contact = initialMembership.get(0);
@@ -154,19 +224,72 @@ public class StateMachine extends GenericProtocol {
 
 	}
 
+	/*--------------------------------- Helpers ---------------------------------------- */
+
+	private void executeOrderedCommand(OrderedCommand ocommand) {
+		assert this.state == State.ACTIVE;
+
+		var command = ocommand.command();
+		var instance = ocommand.instance();
+		logger.debug("Executing command {} for instance {}", command, instance);
+
+		switch (command.getKind()) {
+			case BATCH -> {
+				var batch = command.getBatch();
+				for (var operation : batch.operations) {
+					if (this.executedOperations.contains(operation.operationId)) {
+						logger.warn("Skipping operation {} as it has already been executed", operation.operationId);
+						continue;
+					}
+
+					var notification = new ExecuteNotification(operation.operationId, operation.operation);
+					this.executedOperations.set(operation.operationId);
+					this.triggerNotification(notification);
+				}
+			}
+			case JOIN -> {
+				var join = command.getJoin();
+				var request = new AddReplicaRequest(instance, join.host());
+				this.sendRequest(request, Agreement.ID);
+				this.currentMembership.add(join.host());
+
+				if (this.joinRequests.remove(join.host())) {
+					// TODO:
+					// Send request to HashApp for current state
+					// After the state is received send a SystemJoinReply to this host
+				}
+			}
+			case LEAVE -> {
+				var leave = command.getLeave();
+				var request = new RemoveReplicaRequest(instance, leave.host());
+				this.sendRequest(request, Agreement.ID);
+				this.currentMembership.remove(leave.host());
+			}
+			case NOOP -> {
+			}
+		}
+	}
+
 	/*--------------------------------- Requests ---------------------------------------- */
+
 	private void uponOrderRequest(OrderRequest request, short sourceProto) {
 		logger.debug("Received request: " + request);
 		logger.trace("Received order request with payload size: " + request.getOperation().length);
-		if (state == State.JOINING) {
-			// Do something smart (like buffering the requests)
-			pendingRequests.add(request);
-		} else if (state == State.ACTIVE) {
-			// Also do something smarter, we don't want an infinite number of instances active
-			// Maybe you should modify what is it that you are proposing so that you remember that this
-			// operation was issued by the application (and not an internal operation, check the uponDecidedNotification)
-			sendRequest(new ProposeRequest(nextInstance++, request.getOpId(), request.getOperation()), Agreement.ID);
 
+		switch (this.state) {
+			case JOINING -> {
+				logger.debug("Received order request while joining, adding to pending requests, size: "
+						+ pendingRequests.size());
+				pendingRequests.add(request);
+			}
+			case ACTIVE -> {
+				logger.debug("Received order request while active, adding to batch builder, size: "
+						+ batchBuilder.size());
+				var operation = new Operation(request.getOperationId(), request.getOperation());
+				this.batchBuilder.append(operation);
+				if (this.batchBuildTimer == -1)
+					this.batchBuildTimer = this.setupTimer(new BatchBuildTimer(), this.batchBuildTimeout.toMillis());
+			}
 		}
 	}
 
@@ -178,57 +301,63 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */
+
 	private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
-		logger.debug("Received notification: " + notification);
-		// Maybe we should make sure operations are executed in order?
-		// You should be careful and check if this operation is an application operation (and send it up)
-		// or if this is an operations that was executed by the state machine itself (in which case you should execute)
-		var queueOp = notification.instance != waitingForInstance;
-		if(!queueOp) waitingForInstance++;
-		Runnable runnable = null;
-		switch (typeOf(notification.operation)) {
-			case APP ->
-				runnable = () -> triggerNotification(new ExecuteNotification(notification.operationId, notification.operation));
-			case ADD_REPLICA -> runnable = () -> {
-				var contact = hostFromOperation(notification.operation);
-				if (contact.equals(self))
-					sendRequest(new CurrentStateRequest(notification.instance), HashApp.PROTO_ID);
-			};
-			case REMOVE_REPLICA -> runnable = () -> membership.remove(hostFromOperation(notification.operation));
-		}
-		if (queueOp) {
-			pendingExecutes.add(Pair.of(notification.instance, runnable));
-		} else {
-			runnable.run();
-			//TODO
-		}
-	}
+		logger.trace("Received decided notification for instance " + notification.instance);
 
-	private static OperationType typeOf(byte[] operation) {
-		//TODO probably will have a different prefix
-		return OperationType.APP;
-	}
+		var instance = notification.instance;
+		var command = Command.fromBytes(notification.operation);
 
-	private static Host hostFromOperation(byte[] operation) {
-		return null;
+		this.commandQueue.insert(instance, command);
+		if (this.commandQueue.hasMissingInstance() && this.commandQueueTimer == -1)
+			this.commandQueueTimer = this.setupTimer(new CommandQueueTimer(), this.commandQueueTimeout.toMillis());
+
+		while (this.commandQueue.hasReadyCommand())
+			this.executeOrderedCommand(this.commandQueue.popReadyCommand());
 	}
 
 	/*--------------------------------- Messages ---------------------------------------- */
 	private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
-		// If a message fails to be sent, for whatever reason, log the message and the reason
+		// If a message fails to be sent, for whatever reason, log the message and the
+		// reason
 		logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
 	}
 
-	private void uponSystemJoin(SystemJoin systemJoin, Host sender, short i, int i1) {
-		sendRequest(new AddReplicaRequest(nextInstance++, sender), Agreement.ID);
+	private void uponSystemJoin(SystemJoin systemJoin, Host sender, short sourceProto, int channelId) {
+		if (this.state != State.ACTIVE) {
+			logger.warn("Received system join while not active, ignoring");
+			return;
+		}
+		if (this.currentMembership.contains(sender)) {
+			logger.warn("Received system join from replica that is already part of the system, ignoring");
+			return;
+		}
 	}
 
-	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short i, int i1) {
+	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short sourceProto, int channelId) {
+		if (this.state == State.ACTIVE) {
+			logger.warn("Received system join reply while active, ignoring");
+			return;
+		}
 
+		logger.debug("Joining system at instance {} with membership {}", systemJoinReply.instance,
+				systemJoinReply.membership);
+
+		this.currentMembership.clear();
+		systemJoinReply.membership.forEach(this.currentMembership::add);
+
+		this.commandQueue.setLastExecutedInstance(systemJoinReply.instance - 1);
+
+		var installRequest = new InstallStateRequest(systemJoinReply.state);
+		this.sendRequest(installRequest, HashApp.PROTO_ID);
+
+		var joinNotification = new JoinedNotification(systemJoinReply.instance, systemJoinReply.membership);
+		this.triggerNotification(joinNotification);
 	}
 
 	/*
-	 * --------------------------------- TCPChannel Events ----------------------------
+	 * --------------------------------- TCPChannel Events
+	 * ----------------------------
 	 */
 	private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
 		logger.info("Connection to {} is up", event.getNode());
@@ -244,8 +373,10 @@ public class StateMachine extends GenericProtocol {
 	private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
 
 		logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
-		// Maybe we don't want to do this forever. At some point we assume he is no longer there.
-		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
+		// Maybe we don't want to do this forever. At some point we assume he is no
+		// longer there.
+		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s
+		// of times per second
 		retriesPerPeer.putIfAbsent(event.getNode(), 0);
 		if (retriesPerPeer.get(event.getNode()) < MAX_RETRIES)
 			setupTimer(new RetryTimer(event.getNode()), RETRY_AFTER);
@@ -259,12 +390,6 @@ public class StateMachine extends GenericProtocol {
 		}
 	}
 
-	private void uponRetryTimer(RetryTimer timer, long l) {
-		logger.warn("Retrying connection to {}", timer.peer);
-		retriesPerPeer.put(timer.peer, retriesPerPeer.get(timer.peer) + 1);
-		openConnection(timer.peer);
-	}
-
 	private void uponInConnectionUp(InConnectionUp event, int channelId) {
 		logger.trace("Connection from {} is up", event.getNode());
 	}
@@ -273,12 +398,21 @@ public class StateMachine extends GenericProtocol {
 		logger.trace("Connection from {} is down, cause: {}", event.getNode(), event.getCause());
 	}
 
-	private enum OperationType {
-		APP, ADD_REPLICA, REMOVE_REPLICA
+	/*--------------------------------- Timers ---------------------------------------- */
+
+	private void uponRetryTimer(RetryTimer timer, long l) {
+		logger.warn("Retrying connection to {}", timer.peer);
+		retriesPerPeer.put(timer.peer, retriesPerPeer.get(timer.peer) + 1);
+		openConnection(timer.peer);
 	}
 
-	private enum State {
-		JOINING, ACTIVE
+	private void uponBatchBuild(BatchBuildTimer timer, long timerId) {
+		assert this.batchBuildTimer == timerId;
+		this.batchBuildTimer = -1;
+		var batch = this.batchBuilder.build();
+		var command = Command.batch(batch);
+		var request = new ProposeRequest(-1, UUID.randomUUID(), command.toBytes());
+		this.sendRequest(request, Agreement.ID);
 	}
 
 }

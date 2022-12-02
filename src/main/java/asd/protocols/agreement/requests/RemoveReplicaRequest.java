@@ -1,17 +1,18 @@
 package asd.protocols.agreement.requests;
 
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class RemoveReplicaRequest extends ProtoRequest {
 
-	public static final short REQUEST_ID = 102;
+	public static final short ID = Agreement.ID + 2;
 
 	private final int instance;
 	private final Host replica;
 
 	public RemoveReplicaRequest(int instance, Host replica) {
-		super(REQUEST_ID);
+		super(ID);
 		this.instance = instance;
 		this.replica = replica;
 	}
@@ -23,7 +24,6 @@ public class RemoveReplicaRequest extends ProtoRequest {
 	public Host getReplica() {
 		return replica;
 	}
-
 
 	@Override
 	public String toString() {
