@@ -357,8 +357,10 @@ public class StateMachine extends GenericProtocol {
 	private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
 		logger.debug("Connection to {} is down, cause {}, retrying connection"
 				, event.getNode(), event.getCause());
+		if (event.getCause() != null)
+			event.getCause().printStackTrace();
 		if(membership.contains(event.getNode()))
-			openConnection(event.getNode());
+			openConnection(event.getNode()); //retry to connect some times before proposing leave
 	}
 
 	private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
@@ -399,6 +401,8 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponInConnectionDown(InConnectionDown event, int channelId) {
 		logger.trace("Connection from {} is down, cause: {}", event.getNode(), event.getCause());
+		if (event.getCause() != null)
+			event.getCause().printStackTrace();
 	}
 
 	/*--------------------------------- Timers ---------------------------------------- */
@@ -414,6 +418,7 @@ public class StateMachine extends GenericProtocol {
 		this.batchBuildTimer = -1;
 		var batch = this.batchBuilder.build();
 		var request = new ProposeRequest(-1, UUID.randomUUID(), batch.toBytes());
+		logger.debug("Sending batch with size: {}", batch.operations.length);
 		this.sendRequest(request, Agreement.ID);
 	}
 
