@@ -28,7 +28,7 @@ public class InteractivePaxos extends GenericProtocol {
     public InteractivePaxos() throws HandlerRegistrationException {
         super(NAME, ID);
 
-        this.subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::onChannelReady);
+        this.subscribeNotification(ChannelReadyNotification.ID, this::onChannelReady);
         this.registerReplyHandler(GetResponse.ID, this::onGetResponse);
         this.registerReplyHandler(PutResponse.ID, this::onPutResponse);
     }

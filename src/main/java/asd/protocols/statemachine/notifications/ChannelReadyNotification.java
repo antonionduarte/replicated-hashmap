@@ -5,13 +5,13 @@ import pt.unl.fct.di.novasys.network.data.Host;
 
 public class ChannelReadyNotification extends ProtoNotification {
 
-	public static final short NOTIFICATION_ID = 201;
+	public static final short ID = 201;
 
 	private final int channelId;
 	private final Host myself;
 
 	public ChannelReadyNotification(int channelId, Host myself) {
-		super(NOTIFICATION_ID);
+		super(ID);
 		this.channelId = channelId;
 		this.myself = myself;
 	}

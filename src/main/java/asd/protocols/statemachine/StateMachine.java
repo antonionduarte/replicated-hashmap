@@ -1,7 +1,6 @@
 package asd.protocols.statemachine;
 
 import asd.protocols.agreement.Agreement;
-import asd.protocols.agreement.requests.RemoveReplicaRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
@@ -10,6 +9,7 @@ import asd.protocols.paxos.notifications.DecidedNotification;
 import asd.protocols.paxos.notifications.JoinedNotification;
 import asd.protocols.paxos.requests.AddReplicaRequest;
 import asd.protocols.paxos.requests.ProposeRequest;
+import asd.protocols.paxos.requests.RemoveReplicaRequest;
 import asd.protocols.statemachine.commands.BatchBuilder;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;
@@ -18,6 +18,7 @@ import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import asd.protocols.statemachine.notifications.ExecuteNotification;
+import asd.protocols.statemachine.notifications.UnchangedConfigurationNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
@@ -75,7 +76,8 @@ public class StateMachine extends GenericProtocol {
 	private List<Host> potentialContacts;
 
 	/// JoinRequest tracking
-	// Keeps track of any peers that sent us a join request so we can send them a reply.
+	// Keeps track of any peers that sent us a join request so we can send them a
+	// reply.
 	private final Queue<Host> joiningReplicas;
 
 	/// Command Queueing
@@ -87,7 +89,7 @@ public class StateMachine extends GenericProtocol {
 
 	/// Duplicate operation tracking
 	// duplicateOperationTtl is the amount of time that we remember an operation id
-	/// after it was executed for the first time.
+	// after it was executed for the first time.
 	private final Duration duplicateOperationTtl;
 	private final TtlSet<UUID> executedOperations;
 
@@ -226,6 +228,9 @@ public class StateMachine extends GenericProtocol {
 					var notification = new ExecuteNotification(operation.operationId, operation.operation);
 					this.executedOperations.set(operation.operationId);
 					this.triggerNotification(notification);
+
+					var unchangedNotification = new UnchangedConfigurationNotification(instance);
+					this.triggerNotification(unchangedNotification);
 				}
 			}
 			case JOIN -> {
@@ -247,6 +252,8 @@ public class StateMachine extends GenericProtocol {
 				}
 			}
 			case NOOP -> {
+				var notification = new UnchangedConfigurationNotification(instance);
+				this.triggerNotification(notification);
 			}
 		}
 	}
@@ -345,7 +352,8 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	/*
-	 * --------------------------------- TCPChannel Events ----------------------------
+	 * --------------------------------- TCPChannel Events
+	 * ----------------------------
 	 */
 	private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
 		logger.info("Connection to {} is up", event.getNode());
@@ -355,19 +363,20 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
-		logger.debug("Connection to {} is down, cause {}, retrying connection"
-				, event.getNode(), event.getCause());
+		logger.debug("Connection to {} is down, cause {}, retrying connection", event.getNode(), event.getCause());
 		if (event.getCause() != null)
 			event.getCause().printStackTrace();
-		if(membership.contains(event.getNode()))
-			openConnection(event.getNode()); //retry to connect some times before proposing leave
+		if (membership.contains(event.getNode()))
+			openConnection(event.getNode()); // retry to connect some times before proposing leave
 	}
 
 	private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
 
 		logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
-		// Maybe we don't want to do this forever. At some point we assume he is no longer there.
-		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
+		// Maybe we don't want to do this forever. At some point we assume he is no
+		// longer there.
+		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s
+		// of times per second
 		retriesPerPeer.putIfAbsent(event.getNode(), 0);
 		if (retriesPerPeer.get(event.getNode()) < MAX_RETRIES)
 			setupTimer(new RetryTimer(event.getNode()), RETRY_AFTER);
@@ -382,8 +391,10 @@ public class StateMachine extends GenericProtocol {
 				case ACTIVE -> {
 					if (membership.contains(event.getNode())) {
 						var command = Command.leave(event.getNode());
-						//TODO not sure how to make only one replica propose this, maybe just deal with it
-						sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()), Agreement.ID);
+						// TODO not sure how to make only one replica propose this, maybe just deal with
+						// it
+						// sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()),
+						// Agreement.ID);
 					}
 				}
 			}

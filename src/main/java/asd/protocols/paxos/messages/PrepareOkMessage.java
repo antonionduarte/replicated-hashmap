@@ -30,7 +30,7 @@ public class PrepareOkMessage extends ProtoMessage {
     public PrepareOkMessage(int instance, Ballot ballot, Optional<Proposal> acceptedProposal, boolean decided) {
         super(ID);
 
-        assert acceptedProposal.isEmpty() || acceptedProposal.get().ballot.equals(ballot);
+        assert acceptedProposal.isEmpty() || acceptedProposal.get().slot == instance;
         assert acceptedProposal.isPresent() || !decided;
 
         this.instance = instance;

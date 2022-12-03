@@ -72,11 +72,17 @@ public class PaxosBabel {
     public static final ISerializer<Proposal> proposalSerializer = new ISerializer<Proposal>() {
         @Override
         public void serialize(Proposal msg, ByteBuf buf) throws IOException {
+            ballotSerializer.serialize(msg.ballot, buf);
+            buf.writeInt(msg.slot);
+            proposalValueSerializer.serialize(msg.value, buf);
         }
 
         @Override
         public Proposal deserialize(ByteBuf buf) throws IOException {
-            return null;
+            var ballot = ballotSerializer.deserialize(buf);
+            var slot = buf.readInt();
+            var value = proposalValueSerializer.deserialize(buf);
+            return new Proposal(ballot, slot, value);
         }
     };
 

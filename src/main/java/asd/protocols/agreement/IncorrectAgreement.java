@@ -49,7 +49,7 @@ public class IncorrectAgreement extends GenericProtocol {
 		registerRequestHandler(RemoveReplicaRequest.ID, this::uponRemoveReplica);
 
 		/*--------------------- Register Notification Handlers ----------------------------- */
-		subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::uponChannelCreated);
+		subscribeNotification(ChannelReadyNotification.ID, this::uponChannelCreated);
 		subscribeNotification(JoinedNotification.NOTIFICATION_ID, this::uponJoinedNotification);
 	}
 

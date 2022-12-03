@@ -34,7 +34,9 @@ import asd.protocols.paxos.requests.ProposeRequest;
 import asd.protocols.paxos.requests.RemoveReplicaRequest;
 import asd.protocols.paxos.timer.ForceProposalTimer;
 import asd.protocols.paxos.timer.MajorityTimeoutTimer;
+import asd.protocols.statemachine.StateMachine;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
+import asd.protocols.statemachine.notifications.UnchangedConfigurationNotification;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -142,7 +144,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
         /*--------------------- Register Notification Handlers ----------------------------- */
         this.subscribeNotification(JoinedNotification.ID, this::onJoined);
-        this.subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::onChannelReady);
+        this.subscribeNotification(ChannelReadyNotification.ID, this::onChannelReady);
+        this.subscribeNotification(UnchangedConfigurationNotification.ID, this::onUnchangedConfiguration);
 
         /*-------------------- Register Channel Event ------------------------------- */
 
@@ -190,7 +193,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             if (this.proposalTimeoutTimer == -1) {
                 logger.debug("Scheduling proposal timeout");
                 var timer = new ForceProposalTimer(this.nextInstance);
-                this.proposalTimeoutTimer = this.setupTimer(timer, this.proposalTimeout.toMillis());
+                var timeout = (long) (this.proposalTimeout.toMillis() * (Math.random() + 1.0));
+                this.proposalTimeoutTimer = this.setupTimer(timer, timeout);
             }
             return;
         }
@@ -227,15 +231,22 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         this.checkProposalMajority(instance);
         logger.debug("Sent prepare request for instance {}, ballot = {} to {} members", instance, ballot,
                 membership.size());
+        logger.trace("Members = {}", membership.stream().map(PaxosBabel::hostFromProcessId).toList());
     }
 
     private void checkProposalMajority(int instance) {
         var data = this.instances.get(instance);
         assert data.isProposing && !data.isDecided();
 
+        logger.trace("Checking proposal majority for instance {} and phase {}", instance, data.proposePhase);
         var hasMajority = data.proposeOks.size() >= data.quorumSize;
-        if (!hasMajority)
+        if (!hasMajority) {
+            logger.trace("Proposal majority not reached for instance {} got {}/{}",
+                    instance, data.proposeOks.size(), data.quorumSize);
             return;
+        }
+        logger.trace("Proposal majority reached for instance {} got {}/{}",
+                instance, data.proposeOks.size(), data.quorumSize);
 
         var membership = data.membership.stream().toList();
         switch (data.proposePhase) {
@@ -243,6 +254,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                 var request = new AcceptRequestMessage(instance, membership, data.proposeBallot, data.proposeValue);
                 data.proposePhase = ProposePhase.ACCEPT;
                 data.proposeOks.clear();
+                if (data.highestPromisedBallot.equals(data.proposeBallot))
+                    data.proposeOks.add(this.id);
                 this.sendToMembership(membership, request);
             }
             case ACCEPT -> {
@@ -278,13 +291,18 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
     public void onForceProposal(ForceProposalTimer timer, long timerId) {
         assert timer.instance == this.nextInstance;
+        this.proposalTimeoutTimer = -1;
         this.propose(true);
     }
 
     public void onMajorityTimeout(MajorityTimeoutTimer timer, long timerId) {
+        assert timerId == this.majorityTimeoutTimer;
         assert timer.instance == this.nextInstance;
         var data = this.instances.get(timer.instance);
         assert data.isProposing;
+
+        logger.debug("Majority timeout for instance {}, proposePhase = {}", timer.instance, data.proposePhase);
+        this.majorityTimeoutTimer = -1;
 
         if (data.isOriginalProposeValue)
             this.proposalQueue.add(data.proposeValue.data);
@@ -306,8 +324,14 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         assert data.isProposing;
 
         if (data.isDecided() || data.proposePhase != ProposePhase.ACCEPT
-                || msg.ballot.compare(data.proposeBallot) != Ballot.Order.EQUAL)
+                || msg.ballot.compare(data.proposeBallot) != Ballot.Order.EQUAL) {
+            logger.trace(
+                    "Ignoring accept ok for instance {}, proposePhase = {}, isDecided = {}, ballot = {}, proposeBallot = {}",
+                    msg.instance, data.proposePhase, data.isDecided(), msg.ballot, data.proposeBallot);
             return;
+        }
+
+        logger.trace("Received accept ok for instance {}, ballot = {}", msg.instance, msg.ballot);
 
         var senderId = PaxosBabel.hostToProcessId(host);
         data.proposeOks.add(senderId);
@@ -317,8 +341,10 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     private void onAcceptRequest(AcceptRequestMessage msg, Host host, short sourceProto, int channelId) {
         var data = this.upsertInstanceWithMembership(msg.instance, msg.membership);
 
-        if (msg.ballot.compare(data.highestPromisedBallot) == Ballot.Order.LESS)
+        if (msg.ballot.compare(data.highestPromisedBallot) == Ballot.Order.LESS) {
+            logger.trace("Rejecting accept request for instance {}, ballot = {}", msg.instance, msg.ballot);
             return; // TODO: maybe reject?
+        }
 
         logger.trace("Accepting request for instance {} with ballot {} and host {}", msg.instance, msg.ballot, host);
 
@@ -352,8 +378,14 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         var data = this.getInstance(msg.instance);
         assert data.isProposing;
 
-        if (data.isDecided() || data.proposePhase != ProposePhase.PREPARE || !data.proposeBallot.equals(msg.ballot))
+        if (data.isDecided() || data.proposePhase != ProposePhase.PREPARE || !data.proposeBallot.equals(msg.ballot)) {
+            logger.trace(
+                    "Not accepting prepareOk for instance {} with ballot {} and host {} and decided = {} and phase = {}",
+                    msg.instance, msg.ballot, host, data.isDecided(), data.proposePhase);
             return;
+        }
+
+        logger.trace("Accepting prepareOk for instance {} with ballot {} and host {}", msg.instance, msg.ballot, host);
 
         if (msg.acceptedProposal.isPresent()) {
             var acceptedProposal = msg.acceptedProposal.get();
@@ -374,12 +406,18 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     private void onPrepareRequest(PrepareRequestMessage msg, Host host, short sourceProto, int channelId) {
         var data = this.upsertInstanceWithMembership(msg.instance, msg.membership);
 
-        if (msg.ballot.compare(data.highestPromisedBallot) != Ballot.Order.GREATER)
+        if (msg.ballot.compare(data.highestPromisedBallot) != Ballot.Order.GREATER) {
+            logger.trace("Rejecting prepare request for instance {}, ballot = {}", msg.instance, msg.ballot);
             return;
+        }
+
+        logger.trace("Accepting prepare request for instance {} with ballot {} and host {}", msg.instance, msg.ballot,
+                host);
 
         data.highestPromisedBallot = msg.ballot;
 
         var acceptedProposal = data.highestAcceptedValue
+                .or(() -> data.decidedValue)
                 .map(v -> new Proposal(data.highestAcceptedBallot, msg.instance, v));
         var response = new PrepareOkMessage(
                 msg.instance,
@@ -459,5 +497,13 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         var membership = notification.membership.stream().map(PaxosBabel::hostToProcessId).toList();
         this.nextInstance = notification.joinInstance;
         this.upsertInstanceWithMembership(notification.joinInstance, membership);
+    }
+
+    private void onUnchangedConfiguration(UnchangedConfigurationNotification notification, short sourceProto) {
+        assert sourceProto == StateMachine.ID;
+
+        var membership = this.instances.get(notification.instance).membership.stream().toList();
+        this.upsertInstanceWithMembership(notification.instance + 1, membership);
+        this.propose(false);
     }
 }
