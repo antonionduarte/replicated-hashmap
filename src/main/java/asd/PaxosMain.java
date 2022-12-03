@@ -13,7 +13,6 @@ import org.apache.logging.log4j.Logger;
 
 import asd.protocols.app.HashApp;
 import asd.protocols.paxos.PaxosProtocol;
-import asd.protocols.paxos.PaxosProtocol2;
 import asd.protocols.statemachine.StateMachine;
 import pt.unl.fct.di.novasys.babel.core.Babel;
 
@@ -44,7 +43,7 @@ public class PaxosMain {
         // the channels.
         addInterfaceIp(props);
 
-        var paxos = new PaxosProtocol2(props);
+        var paxos = new PaxosProtocol(props);
         var ipaxos = new InteractivePaxos();
         var statemachine = new StateMachine(props);
         var hashmapapp = new HashApp(props);

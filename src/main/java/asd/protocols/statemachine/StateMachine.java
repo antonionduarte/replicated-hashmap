@@ -1,15 +1,15 @@
 package asd.protocols.statemachine;
 
 import asd.protocols.agreement.Agreement;
+import asd.protocols.agreement.notifications.DecidedNotification;
+import asd.protocols.agreement.notifications.JoinedNotification;
+import asd.protocols.agreement.requests.AddReplicaRequest;
+import asd.protocols.agreement.requests.ProposeRequest;
+import asd.protocols.agreement.requests.RemoveReplicaRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
 import asd.protocols.app.requests.InstallStateRequest;
-import asd.protocols.paxos.notifications.DecidedNotification;
-import asd.protocols.paxos.notifications.JoinedNotification;
-import asd.protocols.paxos.requests.AddReplicaRequest;
-import asd.protocols.paxos.requests.ProposeRequest;
-import asd.protocols.paxos.requests.RemoveReplicaRequest;
 import asd.protocols.statemachine.commands.BatchBuilder;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;

@@ -1,43 +1,25 @@
 package asd.protocols.agreement.notifications;
 
-import org.apache.commons.codec.binary.Hex;
+import asd.AsdUtils;
+import asd.protocols.paxos.PaxosProtocol;
 import pt.unl.fct.di.novasys.babel.generic.ProtoNotification;
 
-import java.util.UUID;
-
 public class DecidedNotification extends ProtoNotification {
+    public static final short ID = PaxosProtocol.ID + 1;
 
-	public static final short NOTIFICATION_ID = 101;
+    public final int instance;
+    public final byte[] operation;
 
-	private final int instance;
-	private final UUID opId;
-	private final byte[] operation;
+    public DecidedNotification(int instance, byte[] operation) {
+        super(ID);
 
-	public DecidedNotification(int instance, UUID opId, byte[] operation) {
-		super(NOTIFICATION_ID);
-		this.instance = instance;
-		this.opId = opId;
-		this.operation = operation;
-	}
+        this.instance = instance;
+        this.operation = operation;
+    }
 
-	public int getInstance() {
-		return instance;
-	}
+    @Override
+    public String toString() {
+        return "DecidedNotification [instance=" + instance + ", operation=" + AsdUtils.sha256Hex(this.operation) + "]";
+    }
 
-	public byte[] getOperation() {
-		return operation;
-	}
-
-	public UUID getOpId() {
-		return opId;
-	}
-
-	@Override
-	public String toString() {
-		return "DecidedNotification{" +
-				"instance=" + instance +
-				", opId=" + opId +
-				", operation=" + Hex.encodeHexString(operation) +
-				'}';
-	}
 }

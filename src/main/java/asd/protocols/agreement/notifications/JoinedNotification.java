@@ -1,36 +1,26 @@
 package asd.protocols.agreement.notifications;
 
+import java.util.List;
+
+import asd.protocols.paxos.PaxosProtocol;
 import pt.unl.fct.di.novasys.babel.generic.ProtoNotification;
 import pt.unl.fct.di.novasys.network.data.Host;
 
-import java.util.List;
-
 public class JoinedNotification extends ProtoNotification {
+    public static final short ID = PaxosProtocol.ID + 2;
 
-	public static final short NOTIFICATION_ID = 102;
+    public final int joinInstance;
+    public final List<Host> membership;
 
-	private final List<Host> membership;
-	private final int joinInstance;
+    public JoinedNotification(int joinInstance, List<Host> membership) {
+        super(ID);
 
-	public JoinedNotification(List<Host> membership, int joinInstance) {
-		super(NOTIFICATION_ID);
-		this.membership = membership;
-		this.joinInstance = joinInstance;
-	}
+        this.joinInstance = joinInstance;
+        this.membership = membership;
+    }
 
-	public int getJoinInstance() {
-		return joinInstance;
-	}
-
-	public List<Host> getMembership() {
-		return membership;
-	}
-
-	@Override
-	public String toString() {
-		return "JoinedNotification{" +
-				"membership=" + membership +
-				", joinInstance=" + joinInstance +
-				'}';
-	}
+    @Override
+    public String toString() {
+        return "JoinedNotification [joinInstance=" + joinInstance + ", membership=" + membership + "]";
+    }
 }

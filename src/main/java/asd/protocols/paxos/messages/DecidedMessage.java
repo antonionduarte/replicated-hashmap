@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import asd.paxos2.ProcessId;
-import asd.paxos2.ProposalValue;
-import asd.protocols.paxos.PaxosBabel;
+import asd.paxos.ProcessId;
+import asd.paxos.ProposalValue;
+import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;

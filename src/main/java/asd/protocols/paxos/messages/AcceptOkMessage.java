@@ -1,8 +1,9 @@
 package asd.protocols.paxos.messages;
 
 import java.io.IOException;
-import asd.paxos2.Ballot;
-import asd.protocols.paxos.PaxosBabel;
+
+import asd.paxos.Ballot;
+import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;

@@ -1,9 +1,7 @@
 package asd;
 
-import asd.protocols.agreement.IncorrectAgreement;
 import asd.protocols.app.HashApp;
 import asd.protocols.paxos.PaxosProtocol;
-import asd.protocols.paxos.PaxosProtocol2;
 import asd.protocols.statemachine.StateMachine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,7 +49,7 @@ public class Main {
 		// StateMachine Protocol
 		var sm = new StateMachine(props);
 		// Agreement Protocol
-		var agreement = new PaxosProtocol2(props);
+		var agreement = new PaxosProtocol(props);
 
 		// Register applications in babel
 		babel.registerProtocol(hashApp);

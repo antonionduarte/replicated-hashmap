@@ -4,10 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import asd.paxos2.ProposalValue;
-import asd.paxos2.Ballot;
-import asd.paxos2.ProcessId;
-import asd.protocols.paxos.PaxosBabel;
+import asd.paxos.ProcessId;
+import asd.paxos.single.Proposal;
+import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -18,17 +17,14 @@ public class AcceptRequestMessage extends ProtoMessage {
 
     public final int instance;
     public final List<ProcessId> membership;
-    public final Ballot ballot;
-    public final ProposalValue value;
+    public final Proposal proposal;
 
-    // TODO: Change this to use Proposal instead of (ballot, value)
-    public AcceptRequestMessage(int instance, List<ProcessId> membership, Ballot ballot, ProposalValue value) {
+    public AcceptRequestMessage(int instance, List<ProcessId> membership, Proposal proposal) {
         super(ID);
 
         this.instance = instance;
         this.membership = membership;
-        this.ballot = ballot;
-        this.value = value;
+        this.proposal = proposal;
     }
 
     public static final ISerializer<AcceptRequestMessage> serializer = new ISerializer<AcceptRequestMessage>() {
@@ -38,8 +34,7 @@ public class AcceptRequestMessage extends ProtoMessage {
             out.writeInt(acceptRequestMessage.membership.size());
             for (var p : acceptRequestMessage.membership)
                 PaxosBabel.processIdSerializer.serialize(p, out);
-            PaxosBabel.ballotSerializer.serialize(acceptRequestMessage.ballot, out);
-            PaxosBabel.proposalValueSerializer.serialize(acceptRequestMessage.value, out);
+            PaxosBabel.singleProposalSerializer.serialize(acceptRequestMessage.proposal, out);
         }
 
         @Override
@@ -49,9 +44,8 @@ public class AcceptRequestMessage extends ProtoMessage {
             List<ProcessId> membership = new ArrayList<>(membershipSize);
             for (int i = 0; i < membershipSize; i++)
                 membership.add(PaxosBabel.processIdSerializer.deserialize(in));
-            Ballot ballot = PaxosBabel.ballotSerializer.deserialize(in);
-            ProposalValue value = PaxosBabel.proposalValueSerializer.deserialize(in);
-            return new AcceptRequestMessage(instance, membership, ballot, value);
+            var proposal = PaxosBabel.singleProposalSerializer.deserialize(in);
+            return new AcceptRequestMessage(instance, membership, proposal);
         }
     };
 

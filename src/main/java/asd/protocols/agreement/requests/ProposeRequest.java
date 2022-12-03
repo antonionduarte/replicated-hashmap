@@ -1,45 +1,23 @@
 package asd.protocols.agreement.requests;
 
-import org.apache.commons.codec.binary.Hex;
-
-import asd.protocols.agreement.Agreement;
+import asd.AsdUtils;
+import asd.protocols.paxos.PaxosProtocol;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
-
-import java.util.UUID;
 
 public class ProposeRequest extends ProtoRequest {
 
-	public static final short ID = Agreement.ID + 1;
+    public static final short ID = PaxosProtocol.ID + 2;
 
-	private final int instance;
-	private final UUID opId;
-	private final byte[] operation;
+    public final byte[] operation;
 
-	public ProposeRequest(int instance, UUID opId, byte[] operation) {
-		super(ID);
-		this.instance = instance;
-		this.opId = opId;
-		this.operation = operation;
-	}
+    public ProposeRequest(byte[] operation) {
+        super(ID);
 
-	public int getInstance() {
-		return instance;
-	}
+        this.operation = operation;
+    }
 
-	public byte[] getOperation() {
-		return operation;
-	}
-
-	public UUID getOpId() {
-		return opId;
-	}
-
-	@Override
-	public String toString() {
-		return "ProposeRequest{" +
-				"instance=" + instance +
-				", opId=" + opId +
-				", operation=" + Hex.encodeHexString(operation) +
-				'}';
-	}
+    @Override
+    public String toString() {
+        return "ProposeRequest [operation=" + AsdUtils.sha256Hex(this.operation) + "]";
+    }
 }

@@ -3,9 +3,9 @@ package asd.protocols.paxos.messages;
 import java.io.IOException;
 import java.util.Optional;
 
-import asd.paxos2.Ballot;
-import asd.paxos2.single.Proposal;
-import asd.protocols.paxos.PaxosBabel;
+import asd.paxos.Ballot;
+import asd.paxos.single.Proposal;
+import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -45,7 +45,7 @@ public class PrepareOkMessage extends ProtoMessage {
             PaxosBabel.ballotSerializer.serialize(msg.ballot, buf);
             buf.writeBoolean(msg.acceptedProposal.isPresent());
             if (msg.acceptedProposal.isPresent()) {
-                PaxosBabel.proposalSerializer.serialize(msg.acceptedProposal.get(), buf);
+                PaxosBabel.singleProposalSerializer.serialize(msg.acceptedProposal.get(), buf);
             }
             buf.writeBoolean(msg.decided);
         }
@@ -56,7 +56,7 @@ public class PrepareOkMessage extends ProtoMessage {
             Ballot ballot = PaxosBabel.ballotSerializer.deserialize(buf);
             Optional<Proposal> acceptedProposal = Optional.empty();
             if (buf.readBoolean()) {
-                acceptedProposal = Optional.of(PaxosBabel.proposalSerializer.deserialize(buf));
+                acceptedProposal = Optional.of(PaxosBabel.singleProposalSerializer.deserialize(buf));
             }
             boolean decided = buf.readBoolean();
             return new PrepareOkMessage(instance, ballot, acceptedProposal, decided);
