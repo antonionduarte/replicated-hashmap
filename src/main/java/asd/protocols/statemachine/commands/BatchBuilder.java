@@ -1,4 +1,6 @@
-package asd.protocols.statemachine;
+package asd.protocols.statemachine.commands;
+
+import asd.protocols.statemachine.Operation;
 
 import java.util.ArrayList;
 import java.util.List;

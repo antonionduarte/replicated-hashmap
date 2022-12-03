@@ -1,6 +1,7 @@
 package asd.protocols.statemachine;
 
 import asd.protocols.agreement.Agreement;
+import asd.protocols.agreement.requests.RemoveReplicaRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
@@ -9,8 +10,10 @@ import asd.protocols.paxos.notifications.DecidedNotification;
 import asd.protocols.paxos.notifications.JoinedNotification;
 import asd.protocols.paxos.requests.AddReplicaRequest;
 import asd.protocols.paxos.requests.ProposeRequest;
-import asd.protocols.paxos.requests.RemoveReplicaRequest;
-import asd.protocols.statemachine.CommandQueue.OrderedCommand;
+import asd.protocols.statemachine.commands.BatchBuilder;
+import asd.protocols.statemachine.commands.Command;
+import asd.protocols.statemachine.commands.CommandQueue;
+import asd.protocols.statemachine.commands.OrderedCommand;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
@@ -19,7 +22,6 @@ import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -51,11 +53,8 @@ import java.util.*;
  * Do not assume that any logic implemented here is correct, think for yourself!
  */
 public class StateMachine extends GenericProtocol {
-	private static enum OperationType {
-		APP, ADD_REPLICA, REMOVE_REPLICA
-	}
 
-	private static enum State {
+	private enum State {
 		JOINING, ACTIVE
 	}
 
@@ -70,25 +69,14 @@ public class StateMachine extends GenericProtocol {
 	private final int channelId; // ID of the created channel
 	private State state;
 	private List<Host> membership;
-	private int nextInstance;
-	private int waitingForInstance;
 
 	private final Map<Host, Integer> retriesPerPeer;
 	private final Queue<OrderRequest> pendingRequests;
-	// priority queue of instance, execute pairs
-	private final Queue<Pair<Integer, Runnable>> pendingExecutes;
-
 	private List<Host> potentialContacts;
-	private Host joiningReplica;
-
-	/// Membership tracking
-	private final Set<Host> initialMembership;
-	private final Set<Host> currentMembership;
 
 	/// JoinRequest tracking
-	// Keeps track of any peers that sent us a join request so we can send them a
-	/// reply.
-	private final Set<Host> joinRequests;
+	// Keeps track of any peers that sent us a join request so we can send them a reply.
+	private final Queue<Host> joiningReplicas;
 
 	/// Command Queueing
 	// commandQueueTimer is -1 if no active timer.
@@ -112,8 +100,6 @@ public class StateMachine extends GenericProtocol {
 
 	public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
 		super(PROTOCOL_NAME, ID);
-		nextInstance = 0;
-		waitingForInstance = 0;
 
 		String address = props.getProperty("babel_address");
 		String port = props.getProperty("statemachine_port");
@@ -123,14 +109,10 @@ public class StateMachine extends GenericProtocol {
 
 		this.retriesPerPeer = new HashMap<>();
 		this.pendingRequests = new LinkedList<>();
-		this.pendingExecutes = new PriorityQueue<>(Comparator.comparingInt(Pair::getLeft));
 
 		/// Membership tracking
-		this.initialMembership = new HashSet<>();
-		this.currentMembership = new HashSet<>();
-
 		/// JoinRequest tracking
-		this.joinRequests = new HashSet<>();
+		this.joiningReplicas = new LinkedList<>();
 
 		/// Command queueing
 		this.commandQueue = new CommandQueue();
@@ -199,7 +181,6 @@ public class StateMachine extends GenericProtocol {
 				throw new AssertionError("Error parsing statemachine_initial_membership", e);
 			}
 			initialMembership.add(h);
-			this.initialMembership.add(h);
 		}
 
 		if (initialMembership.contains(self)) {
@@ -210,13 +191,13 @@ public class StateMachine extends GenericProtocol {
 			membership = new LinkedList<>(initialMembership);
 			membership.forEach(this::openConnection);
 			triggerNotification(new JoinedNotification(0, membership));
-			initialMembership.forEach(this.currentMembership::add);
 		} else {
 			state = State.JOINING;
 			logger.info("Starting in JOINING as I am not part of initial membership");
 			// You have to do something to join the system and know which instance you
 			// joined
 			// (and copy the state of that instance)
+			membership = new LinkedList<>();
 			potentialContacts = initialMembership;
 			var contact = initialMembership.get(0);
 			openConnection(contact);
@@ -226,11 +207,11 @@ public class StateMachine extends GenericProtocol {
 
 	/*--------------------------------- Helpers ---------------------------------------- */
 
-	private void executeOrderedCommand(OrderedCommand ocommand) {
+	private void executeOrderedCommand(OrderedCommand orderedCommand) {
 		assert this.state == State.ACTIVE;
 
-		var command = ocommand.command();
-		var instance = ocommand.instance();
+		var command = orderedCommand.command();
+		var instance = orderedCommand.instance();
 		logger.debug("Executing command {} for instance {}", command, instance);
 
 		switch (command.getKind()) {
@@ -249,21 +230,21 @@ public class StateMachine extends GenericProtocol {
 			}
 			case JOIN -> {
 				var join = command.getJoin();
-				var request = new AddReplicaRequest(instance, join.host());
+				var request = new AddReplicaRequest(instance, join.host);
 				this.sendRequest(request, Agreement.ID);
-				this.currentMembership.add(join.host());
+				this.membership.add(join.host);
+				openConnection(join.host);
 
-				if (this.joinRequests.remove(join.host())) {
-					// TODO:
-					// Send request to HashApp for current state
-					// After the state is received send a SystemJoinReply to this host
+				if (this.joiningReplicas.contains(join.host)) {
+					sendRequest(new CurrentStateRequest(instance), HashApp.PROTO_ID);
 				}
 			}
 			case LEAVE -> {
 				var leave = command.getLeave();
-				var request = new RemoveReplicaRequest(instance, leave.host());
-				this.sendRequest(request, Agreement.ID);
-				this.currentMembership.remove(leave.host());
+				if (this.membership.remove(leave.host)) {
+					var request = new RemoveReplicaRequest(instance, leave.host);
+					this.sendRequest(request, Agreement.ID);
+				}
 			}
 			case NOOP -> {
 			}
@@ -296,8 +277,12 @@ public class StateMachine extends GenericProtocol {
 	/*--------------------------------- Replies ---------------------------------------- */
 
 	private void uponCurrentStateReply(CurrentStateReply reply, short i) {
-		sendMessage(new SystemJoinReply(membership, nextInstance, reply.getState()), joiningReplica);
-		joiningReplica = null;
+		var joiningReplica = joiningReplicas.poll();
+		if (joiningReplica == null) {
+			logger.warn("CurrentStateReply with no joining replica");
+			return;
+		}
+		sendMessage(new SystemJoinReply(membership, reply.getInstance(), reply.getState()), joiningReplica);
 	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */
@@ -328,10 +313,13 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("Received system join while not active, ignoring");
 			return;
 		}
-		if (this.currentMembership.contains(sender)) {
+		if (this.membership.contains(sender)) {
 			logger.warn("Received system join from replica that is already part of the system, ignoring");
 			return;
 		}
+		joiningReplicas.add(sender);
+		var command = Command.join(sender);
+		sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()), Agreement.ID);
 	}
 
 	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short sourceProto, int channelId) {
@@ -343,8 +331,8 @@ public class StateMachine extends GenericProtocol {
 		logger.debug("Joining system at instance {} with membership {}", systemJoinReply.instance,
 				systemJoinReply.membership);
 
-		this.currentMembership.clear();
-		systemJoinReply.membership.forEach(this.currentMembership::add);
+		this.membership = new LinkedList<>(systemJoinReply.membership);
+		this.membership.forEach(this::openConnection);
 
 		this.commandQueue.setLastExecutedInstance(systemJoinReply.instance - 1);
 
@@ -353,11 +341,11 @@ public class StateMachine extends GenericProtocol {
 
 		var joinNotification = new JoinedNotification(systemJoinReply.instance, systemJoinReply.membership);
 		this.triggerNotification(joinNotification);
+		this.state = State.ACTIVE;
 	}
 
 	/*
-	 * --------------------------------- TCPChannel Events
-	 * ----------------------------
+	 * --------------------------------- TCPChannel Events ----------------------------
 	 */
 	private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
 		logger.info("Connection to {} is up", event.getNode());
@@ -367,23 +355,36 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
-		logger.debug("Connection to {} is down, cause {}", event.getNode(), event.getCause());
-		if (event.getCause() != null)
-			event.getCause().printStackTrace();
+		logger.debug("Connection to {} is down, cause {}, retrying connection"
+				, event.getNode(), event.getCause());
+		if(membership.contains(event.getNode()))
+			openConnection(event.getNode());
 	}
 
 	private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
 
 		logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
-		// Maybe we don't want to do this forever. At some point we assume he is no
-		// longer there.
-		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s
-		// of times per second
+		// Maybe we don't want to do this forever. At some point we assume he is no longer there.
+		// Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
 		retriesPerPeer.putIfAbsent(event.getNode(), 0);
 		if (retriesPerPeer.get(event.getNode()) < MAX_RETRIES)
 			setupTimer(new RetryTimer(event.getNode()), RETRY_AFTER);
 		else {
 			retriesPerPeer.remove(event.getNode());
+			switch (state) {
+				case JOINING -> {
+					potentialContacts.remove(event.getNode());
+					if (!potentialContacts.isEmpty())
+						openConnection(potentialContacts.get(0));
+				}
+				case ACTIVE -> {
+					if (membership.contains(event.getNode())) {
+						var command = Command.leave(event.getNode());
+						//TODO not sure how to make only one replica propose this, maybe just deal with it
+						sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()), Agreement.ID);
+					}
+				}
+			}
 			if (state == State.JOINING) {
 				potentialContacts.remove(event.getNode());
 				if (!potentialContacts.isEmpty())
@@ -398,8 +399,6 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponInConnectionDown(InConnectionDown event, int channelId) {
 		logger.trace("Connection from {} is down, cause: {}", event.getNode(), event.getCause());
-		if (event.getCause() != null)
-			event.getCause().printStackTrace();
 	}
 
 	/*--------------------------------- Timers ---------------------------------------- */
@@ -414,9 +413,7 @@ public class StateMachine extends GenericProtocol {
 		assert this.batchBuildTimer == timerId;
 		this.batchBuildTimer = -1;
 		var batch = this.batchBuilder.build();
-		var command = Command.batch(batch);
-		var request = new ProposeRequest(-1, UUID.randomUUID(), command.toBytes());
-		logger.debug("Sending batch with size: {}", batch.operations.length);
+		var request = new ProposeRequest(-1, UUID.randomUUID(), batch.toBytes());
 		this.sendRequest(request, Agreement.ID);
 	}
 
