@@ -168,7 +168,7 @@ public class HashApp extends GenericProtocol {
 				data.put(op.getKey(), op.getData());
 			}
 			executedOps++;
-			if (executedOps % 10000 == 0) {
+			if (executedOps % 5000 == 0) {
 				logger.info("Current state N_OPS= {}, MAP_SIZE={}, HASH={}",
 						executedOps, data.size(), Hex.encodeHexString(cumulativeHash));
 			}
@@ -257,11 +257,11 @@ public class HashApp extends GenericProtocol {
 	}
 
 	private void onClientUp(ClientUpEvent event, int channel) {
-		logger.info(event);
+		logger.debug(event);
 	}
 
 	private void onClientDown(ClientDownEvent event, int channel) {
-		logger.info(event);
+		logger.debug(event);
 	}
 
 	private byte[] getCurrentState() throws IOException {

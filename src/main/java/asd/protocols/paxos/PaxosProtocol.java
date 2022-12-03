@@ -12,7 +12,6 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 import asd.paxos2.Ballot;
 import asd.paxos2.ProcessId;
 import asd.paxos2.ProposalValue;
-import asd.paxos2.Proposal;
+import asd.paxos2.single.Proposal;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.paxos.messages.AcceptOkMessage;
 import asd.protocols.paxos.messages.AcceptRequestMessage;
@@ -44,8 +43,7 @@ import pt.unl.fct.di.novasys.network.data.Host;
 
 public class PaxosProtocol extends GenericProtocol implements Agreement {
     private static enum ProposePhase {
-        PREPARE,
-        ACCEPT,
+        PREPARE, ACCEPT,
     }
 
     private static class Instance {
@@ -260,7 +258,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             }
             case ACCEPT -> {
                 var message = new DecidedMessage(instance, membership, data.proposeValue);
-                var notification = new DecidedNotification(instance, UUID.randomUUID(), data.proposeValue.data);
+                var notification = new DecidedNotification(instance, data.proposeValue.data);
                 data.decidedValue = Optional.of(data.proposeValue);
                 data.proposeOks.clear();
                 this.tryAdvanceNextInstance();
@@ -369,7 +367,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         data.decidedValue = Optional.of(msg.value);
 
         var operation = msg.value.data;
-        var notification = new DecidedNotification(msg.instance, UUID.randomUUID(), operation);
+        var notification = new DecidedNotification(msg.instance, operation);
         this.triggerNotification(notification);
         this.tryAdvanceNextInstance();
     }
@@ -389,7 +387,6 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
         if (msg.acceptedProposal.isPresent()) {
             var acceptedProposal = msg.acceptedProposal.get();
-            assert acceptedProposal.slot == msg.instance;
             if (acceptedProposal.ballot.compare(data.proposeBallot) == Ballot.Order.GREATER) {
                 if (data.isOriginalProposeValue)
                     this.proposalQueue.add(data.proposeValue.data);
@@ -418,7 +415,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
         var acceptedProposal = data.highestAcceptedValue
                 .or(() -> data.decidedValue)
-                .map(v -> new Proposal(data.highestAcceptedBallot, msg.instance, v));
+                .map(v -> new Proposal(data.highestAcceptedBallot, v));
         var response = new PrepareOkMessage(
                 msg.instance,
                 msg.ballot,

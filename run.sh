@@ -8,7 +8,7 @@ fi
 PROCESS_COUNT=$1
 PORT_OFFSET=$2
 BASE_P2P_PORT=3000
-BASE_SERVER_PORT=5000
+BASE_SERVER_PORT=35000
 P2P_PORT=$(python -c "print($BASE_P2P_PORT + $PORT_OFFSET)")
 SERVER_PORT=$(python -c "print($BASE_SERVER_PORT + $PORT_OFFSET)")
 MEMBERSHIP=$(python -c "print(','.join(['localhost:'+str($BASE_P2P_PORT+i) for i in range($PROCESS_COUNT)]))")

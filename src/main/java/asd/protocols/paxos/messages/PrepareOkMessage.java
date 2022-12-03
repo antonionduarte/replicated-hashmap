@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.Optional;
 
 import asd.paxos2.Ballot;
-import asd.paxos2.Proposal;
+import asd.paxos2.single.Proposal;
 import asd.protocols.paxos.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
@@ -30,7 +30,6 @@ public class PrepareOkMessage extends ProtoMessage {
     public PrepareOkMessage(int instance, Ballot ballot, Optional<Proposal> acceptedProposal, boolean decided) {
         super(ID);
 
-        assert acceptedProposal.isEmpty() || acceptedProposal.get().slot == instance;
         assert acceptedProposal.isPresent() || !decided;
 
         this.instance = instance;

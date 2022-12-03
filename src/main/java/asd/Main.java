@@ -3,6 +3,7 @@ package asd;
 import asd.protocols.agreement.IncorrectAgreement;
 import asd.protocols.app.HashApp;
 import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.paxos.PaxosProtocol2;
 import asd.protocols.statemachine.StateMachine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,11 +47,11 @@ public class Main {
 		addInterfaceIp(props);
 
 		// Application
-		HashApp hashApp = new HashApp(props);
+		var hashApp = new HashApp(props);
 		// StateMachine Protocol
-		StateMachine sm = new StateMachine(props);
+		var sm = new StateMachine(props);
 		// Agreement Protocol
-		PaxosProtocol agreement = new PaxosProtocol(props);
+		var agreement = new PaxosProtocol2(props);
 
 		// Register applications in babel
 		babel.registerProtocol(hashApp);

@@ -2,6 +2,8 @@ package asd.protocols.app.messages;
 
 import io.netty.buffer.ByteBuf;
 import org.apache.commons.codec.binary.Hex;
+
+import asd.AsdUtils;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
 
@@ -72,7 +74,7 @@ public class RequestMessage extends ProtoMessage {
 				"opId=" + opId +
 				", opType=" + opType +
 				", key='" + key + '\'' +
-				", data=" + Hex.encodeHexString(data) +
+				", data=" + AsdUtils.sha256Hex(data) +
 				'}';
 	}
 }

@@ -2,6 +2,8 @@ package asd.protocols.app.utils;
 
 import org.apache.commons.codec.binary.Hex;
 
+import asd.AsdUtils;
+
 import java.io.*;
 
 public class Operation {
@@ -53,7 +55,7 @@ public class Operation {
 		return "Operation{" +
 				"opType=" + opType +
 				", key='" + key + '\'' +
-				", data=" + Hex.encodeHexString(data) +
+				", data=" + AsdUtils.sha256Hex(data) +
 				'}';
 	}
 }

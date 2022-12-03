@@ -257,6 +257,13 @@ public class StateMachine extends GenericProtocol {
 		}
 	}
 
+	private void buildBatch() {
+		var batch = this.batchBuilder.build();
+		var request = new ProposeRequest(batch.toBytes());
+		logger.debug("Sending batch with size: {}", batch.operations.length);
+		this.sendRequest(request, Agreement.ID);
+	}
+
 	/*--------------------------------- Requests ---------------------------------------- */
 
 	private void uponOrderRequest(OrderRequest request, short sourceProto) {
@@ -274,8 +281,13 @@ public class StateMachine extends GenericProtocol {
 						+ batchBuilder.size());
 				var operation = new Operation(request.getOperationId(), request.getOperation());
 				this.batchBuilder.append(operation);
-				if (this.batchBuildTimer == -1)
-					this.batchBuildTimer = this.setupTimer(new BatchBuildTimer(), this.batchBuildTimeout.toMillis());
+				if (this.batchBuildTimer == -1) {
+					if (this.batchBuildTimeout.isZero())
+						this.buildBatch();
+					else
+						this.batchBuildTimer = this.setupTimer(new BatchBuildTimer(),
+								this.batchBuildTimeout.toMillis());
+				}
 			}
 		}
 	}
@@ -325,7 +337,7 @@ public class StateMachine extends GenericProtocol {
 		}
 		joiningReplicas.add(sender);
 		var command = Command.join(sender);
-		sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()), Agreement.ID);
+		sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
 	}
 
 	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short sourceProto, int channelId) {
@@ -392,8 +404,7 @@ public class StateMachine extends GenericProtocol {
 						var command = Command.leave(event.getNode());
 						// TODO not sure how to make only one replica propose this, maybe just deal with
 						// it
-						sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()),
-						Agreement.ID);
+						sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
 					}
 				}
 			}
@@ -426,10 +437,7 @@ public class StateMachine extends GenericProtocol {
 	private void uponBatchBuild(BatchBuildTimer timer, long timerId) {
 		assert this.batchBuildTimer == timerId;
 		this.batchBuildTimer = -1;
-		var batch = this.batchBuilder.build();
-		var request = new ProposeRequest(-1, UUID.randomUUID(), batch.toBytes());
-		logger.debug("Sending batch with size: {}", batch.operations.length);
-		this.sendRequest(request, Agreement.ID);
+		this.buildBatch();
 	}
 
 }

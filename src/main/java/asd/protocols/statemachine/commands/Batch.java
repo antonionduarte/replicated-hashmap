@@ -24,11 +24,12 @@ public class Batch extends Command {
             var mostSignificant = dis.readLong();
             var leastSignificant = dis.readLong();
             var uuid = new UUID(mostSignificant, leastSignificant);
-            var opBytes = dis.readAllBytes();
-            this.operations[i] = new Operation(uuid, opBytes);
+            var operationSize = dis.readInt();
+            var operationData = new byte[operationSize];
+            dis.read(operationData);
+            this.operations[i] = new Operation(uuid, operationData);
         }
     }
-
 
     @Override
     public byte[] toBytes() {
@@ -40,6 +41,7 @@ public class Batch extends Command {
             for (var op : operations) {
                 dos.writeLong(op.operationId.getMostSignificantBits());
                 dos.writeLong(op.operationId.getLeastSignificantBits());
+                dos.writeInt(op.operation.length);
                 dos.write(op.operation);
             }
         } catch (IOException ex) {

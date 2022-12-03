@@ -52,7 +52,7 @@ public class Paxos {
         this.proposer.receiveAcceptOk(processId, proposalNumber);
     }
 
-    public void receiveDecide(ProcessId processId, ProposalValue proposal) {
+    public void receiveDecided(ProcessId processId, ProposalValue proposal) {
         this.learner.onDecide(proposal);
     }
 

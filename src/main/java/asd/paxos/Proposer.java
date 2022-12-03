@@ -26,7 +26,6 @@ class Proposer {
     private final int quorumSize;
     public final Duration majorityTimeout;
 
-    // Can be null if we don't have a proposal for this instance yet.
     private Proposal currentProposal;
     private Phase currentPhase;
     private Set<ProcessId> currentOks;

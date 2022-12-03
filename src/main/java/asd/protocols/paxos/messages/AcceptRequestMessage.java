@@ -21,6 +21,7 @@ public class AcceptRequestMessage extends ProtoMessage {
     public final Ballot ballot;
     public final ProposalValue value;
 
+    // TODO: Change this to use Proposal instead of (ballot, value)
     public AcceptRequestMessage(int instance, List<ProcessId> membership, Ballot ballot, ProposalValue value) {
         super(ID);
 

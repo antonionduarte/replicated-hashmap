@@ -12,7 +12,7 @@ import com.google.common.primitives.Longs;
 
 import asd.paxos2.Ballot;
 import asd.paxos2.ProcessId;
-import asd.paxos2.Proposal;
+import asd.paxos2.single.Proposal;
 import asd.paxos2.ProposalValue;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.network.ISerializer;
@@ -73,16 +73,14 @@ public class PaxosBabel {
         @Override
         public void serialize(Proposal msg, ByteBuf buf) throws IOException {
             ballotSerializer.serialize(msg.ballot, buf);
-            buf.writeInt(msg.slot);
             proposalValueSerializer.serialize(msg.value, buf);
         }
 
         @Override
         public Proposal deserialize(ByteBuf buf) throws IOException {
             var ballot = ballotSerializer.deserialize(buf);
-            var slot = buf.readInt();
             var value = proposalValueSerializer.deserialize(buf);
-            return new Proposal(ballot, slot, value);
+            return new Proposal(ballot, value);
         }
     };
 
