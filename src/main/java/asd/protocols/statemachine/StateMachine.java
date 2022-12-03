@@ -87,10 +87,6 @@ public class StateMachine extends GenericProtocol {
 	private final Duration commandQueueTimeout;
 	private long commandQueueTimer;
 
-	/// Duplicate operation tracking
-	// duplicateOperationTtl is the amount of time that we remember an operation id
-	// after it was executed for the first time.
-	private final Duration duplicateOperationTtl;
 	private final TtlSet<UUID> executedOperations;
 
 	/// Operation batching
@@ -122,8 +118,11 @@ public class StateMachine extends GenericProtocol {
 		this.commandQueueTimer = -1;
 
 		/// Duplicate operation tracking
-		this.duplicateOperationTtl = Duration.parse(props.getProperty("statemachine_duplicate_operation_ttl"));
-		this.executedOperations = new TtlSet<>(this.duplicateOperationTtl);
+		/// Duplicate operation tracking
+		// duplicateOperationTtl is the amount of time that we remember an operation id
+		// after it was executed for the first time.
+		Duration duplicateOperationTtl = Duration.parse(props.getProperty("statemachine_duplicate_operation_ttl"));
+		this.executedOperations = new TtlSet<>(duplicateOperationTtl);
 
 		/// Operation batching
 		this.batchBuilder = new BatchBuilder();
@@ -393,8 +392,8 @@ public class StateMachine extends GenericProtocol {
 						var command = Command.leave(event.getNode());
 						// TODO not sure how to make only one replica propose this, maybe just deal with
 						// it
-						// sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()),
-						// Agreement.ID);
+						sendRequest(new ProposeRequest(-1, UUID.randomUUID(), command.toBytes()),
+						Agreement.ID);
 					}
 				}
 			}
