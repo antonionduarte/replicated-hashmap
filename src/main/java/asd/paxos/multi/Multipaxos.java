@@ -9,6 +9,7 @@ import java.util.Optional;
 
 public class Multipaxos {
 	private final MultipaxosIO multipaxosIO;
+
 	private final Proposer proposer;
 	private final Learner learner;
 	private final Acceptor acceptor;
@@ -26,21 +27,24 @@ public class Multipaxos {
 		return this.proposer.canPropose() && !this.learner.hasDecided();
 	}
 
-	public void receivePrepareRequest(ProcessId processId, Ballot ballot) {
-		this.proposer.onPrepareRequest(processId, ballot);
-		this.leaderId = processId;
+	public void receivePrepareRequest(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
+		this.acceptor.onPrepareRequest(processId, ballot, config);
 	}
 
-	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
-		this.proposer.receivePrepareOk(processId, ballot, highestAccept);
+	public void receivePrepareOk(ProcessId processId, Ballot ballot, Proposal highestAccept, MultipaxosConfig config) {
+		this.proposer.receivePrepareOk(processId, ballot, highestAccept, config);
 	}
 
 	public void receiveAcceptRequest(ProcessId processId, Proposal proposal) {
 		this.acceptor.onAcceptRequest(processId, proposal);
 	}
 
-	public void receiveAcceptOk(ProcessId processId, Ballot ballot) {
-		this.proposer.receiveAcceptOk(processId, ballot);
+	public void receiveAcceptOk(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
+		this.proposer.receiveAcceptOk(processId, ballot, config);
+	}
+
+	public void setLeader(ProcessId leaderId) {
+		this.leaderId = leaderId;
 	}
 
 	public void receiveDecide(ProcessId processId, ProposalValue proposal) {

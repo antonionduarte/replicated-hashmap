@@ -2,6 +2,7 @@ package asd.paxos.single;
 
 import java.util.Optional;
 
+import asd.paxos.AgreementCmd;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,7 +37,7 @@ class Acceptor {
         }
 
         this.promise = ballot;
-        this.io.push(PaxosCmd.sendPrepareOk(processId, ballot, this.accepted));
+        this.io.push(AgreementCmd.sendPrepareOk(processId, ballot, this.accepted));
         logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
     }
 
@@ -48,7 +49,7 @@ class Acceptor {
 
         this.promise = proposal.ballot;
         this.accepted = Optional.of(proposal);
-        this.io.push(PaxosCmd.sendAcceptOk(processId, promise));
+        this.io.push(AgreementCmd.sendAcceptOk(processId, promise));
         logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
     }
 

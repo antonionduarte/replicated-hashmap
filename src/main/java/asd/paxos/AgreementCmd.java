@@ -1,15 +1,13 @@
-package asd.paxos.single;
+package asd.paxos;
 
 import java.time.Duration;
 import java.util.Optional;
 
-import asd.paxos.Ballot;
-import asd.paxos.ProcessId;
-import asd.paxos.ProposalValue;
+import asd.paxos.single.Proposal;
 
-public class PaxosCmd {
+public class AgreementCmd {
     public static enum Kind {
-        Decided, SendPrepareRequest, SendPrepareOk, SendAcceptRequest, SendAcceptOk, SendDecided, SetupTimer, CancelTimer
+        Decided, SendPrepareRequest, SendPrepareOk, SendAcceptRequest, SendAcceptOk, SendDecided, SetupTimer, CancelTimer, NewLeader
     }
 
     // Issued when a decision was learned.
@@ -26,13 +24,13 @@ public class PaxosCmd {
     public static record SendPrepareOk(
             ProcessId processId,
             Ballot ballot,
-            Optional<Proposal> highestAccept) {
+            Optional<asd.paxos.single.Proposal> highestAccept) {
     }
 
     // Issued when the proposer wants to send an accept request to an acceptor.
     public static record SendAcceptRequest(
             ProcessId processId,
-            Proposal proposal) {
+            asd.paxos.single.Proposal proposal) {
     }
 
     // Issued when the acceptor wants to send an accept-ok message to a proposer.
@@ -59,16 +57,27 @@ public class PaxosCmd {
             int timerId) {
     }
 
+    // Issued when a new leader has been elected
+    public static record NewLeader(
+            ProcessId processId) {
+    }
+
     private final Kind kind;
     private final Object value;
 
-    private PaxosCmd(Kind kind, Object value) {
+    private AgreementCmd(Kind kind, Object value) {
         this.kind = kind;
         this.value = value;
     }
 
     public Kind getKind() {
         return kind;
+    }
+
+    public NewLeader getNewLeader() {
+        if (kind != Kind.NewLeader)
+            throw new IllegalStateException("getNewLeader() called on " + kind);
+        return (NewLeader) value;
     }
 
     public Decided getDecided() {
@@ -119,35 +128,35 @@ public class PaxosCmd {
         return (CancelTimer) value;
     }
 
-    public static PaxosCmd decided(ProposalValue value) {
-        return new PaxosCmd(Kind.Decided, new Decided(value));
+    public static AgreementCmd decided(ProposalValue value) {
+        return new AgreementCmd(Kind.Decided, new Decided(value));
     }
 
-    public static PaxosCmd sendPrepareRequest(ProcessId processId, Ballot ballot) {
-        return new PaxosCmd(Kind.SendPrepareRequest, new SendPrepareRequest(processId, ballot));
+    public static AgreementCmd sendPrepareRequest(ProcessId processId, Ballot ballot) {
+        return new AgreementCmd(Kind.SendPrepareRequest, new SendPrepareRequest(processId, ballot));
     }
 
-    public static PaxosCmd sendPrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
-        return new PaxosCmd(Kind.SendPrepareOk, new SendPrepareOk(processId, ballot, highestAccept));
+    public static AgreementCmd sendPrepareOk(ProcessId processId, Ballot ballot, Optional<asd.paxos.single.Proposal> highestAccept) {
+        return new AgreementCmd(Kind.SendPrepareOk, new SendPrepareOk(processId, ballot, highestAccept));
     }
 
-    public static PaxosCmd sendAcceptRequest(ProcessId processId, Proposal proposal) {
-        return new PaxosCmd(Kind.SendAcceptRequest, new SendAcceptRequest(processId, proposal));
+    public static AgreementCmd sendAcceptRequest(ProcessId processId, Proposal proposal) {
+        return new AgreementCmd(Kind.SendAcceptRequest, new SendAcceptRequest(processId, proposal));
     }
 
-    public static PaxosCmd sendAcceptOk(ProcessId processId, Ballot ballot) {
-        return new PaxosCmd(Kind.SendAcceptOk, new SendAcceptOk(processId, ballot));
+    public static AgreementCmd sendAcceptOk(ProcessId processId, Ballot ballot) {
+        return new AgreementCmd(Kind.SendAcceptOk, new SendAcceptOk(processId, ballot));
     }
 
-    public static PaxosCmd sendDecided(ProcessId processId, ProposalValue value) {
-        return new PaxosCmd(Kind.SendDecided, new SendDecided(processId, value));
+    public static AgreementCmd sendDecided(ProcessId processId, ProposalValue value) {
+        return new AgreementCmd(Kind.SendDecided, new SendDecided(processId, value));
     }
 
-    public static PaxosCmd setupTimer(int timerId, Duration timeout) {
-        return new PaxosCmd(Kind.SetupTimer, new SetupTimer(timerId, timeout));
+    public static AgreementCmd setupTimer(int timerId, Duration timeout) {
+        return new AgreementCmd(Kind.SetupTimer, new SetupTimer(timerId, timeout));
     }
 
-    public static PaxosCmd cancelTimer(int timerId) {
-        return new PaxosCmd(Kind.CancelTimer, new CancelTimer(timerId));
+    public static AgreementCmd cancelTimer(int timerId) {
+        return new AgreementCmd(Kind.CancelTimer, new CancelTimer(timerId));
     }
 }

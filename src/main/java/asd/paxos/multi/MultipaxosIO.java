@@ -1,9 +1,9 @@
 package asd.paxos.multi;
 
-import asd.paxos.single.PaxosCmd;
+import asd.paxos.AgreementCmd;
 
 public interface MultipaxosIO {
 
-	void push(MultipaxosCmd cmd);
+	void push(AgreementCmd cmd);
 
 }

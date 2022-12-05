@@ -3,9 +3,9 @@ package asd.protocols.multipaxos;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 import asd.paxos.multi.Multipaxos;
+import asd.paxos.AgreementCmd;
+import asd.paxos.AgreementCmdQueue;
 import asd.paxos.multi.MultipaxosConfig;
-import asd.paxos.single.PaxosCmd;
-import asd.paxos.single.PaxosCmdQueue;
 import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.JoinedNotification;
@@ -33,14 +33,20 @@ public class MultipaxosProtocol extends GenericProtocol {
 	private boolean joined;
 	private boolean deciding;
 	private ProcessId id;
+	private ProcessId leaderId;
 
 	private final ArrayDeque<ProposalValue> proposalQueue;
-	private final PaxosCmdQueue queue;
+	private final AgreementCmdQueue queue;
 
 	/* Multipaxos */
 
 	public final Set<ProcessId> membership;
 	public final List<ProcessId> membershipList;
+
+	/* Timeouts */
+
+	private int majorityTimeout;
+	private int leaderTimeout;
 
 	/* Instance tracking */
 
@@ -55,7 +61,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 		// Multipaxos
 		this.multipaxos = null;
-		this.queue = new PaxosCmdQueue();
+		this.queue = new AgreementCmdQueue();
 
 		// Membership
 		this.membership = new HashSet<>();
@@ -67,9 +73,14 @@ public class MultipaxosProtocol extends GenericProtocol {
 		/*--------------------- Register Timer Handlers ----------------------------- */
 
 		/*--------------------- Register Request Handlers ----------------------------- */
+		this.registerRequestHandler(ProposeRequest.ID, this::onProposeRequest);
+		this.registerRequestHandler(AddReplicaRequest.ID, this::onAddReplicaRequest);
+		this.registerRequestHandler(RemoveReplicaRequest.ID, this::onRemoveReplicaRequest);
 
 		/*--------------------- Register Notification Handlers ----------------------------- */
-
+		this.subscribeNotification(JoinedNotification.ID, this::onJoined);
+		this.subscribeNotification(ChannelReadyNotification.ID, this::onChannelReady);
+		// this.subscribeNotification(UnchangedConfigurationNotification.ID, this::onUnchangedConfiguration); TODO;
 
 	}
 
@@ -89,15 +100,12 @@ public class MultipaxosProtocol extends GenericProtocol {
 				case SendPrepareOk -> uponSendPrepareOkCommand(cmd);
 				case SendAcceptRequest -> uponSendAcceptRequestCommand(cmd);
 				case SendAcceptOk -> uponSendAcceptOkCommand(cmd);
+				case NewLeader -> uponNewLeaderCommand(cmd);
 			}
 		}
 	}
 
-	private void uponProposeCommand(PaxosCmd cmd) {
-		// TODO;
-	}
-
-	private void uponDecidedCommand(PaxosCmd cmd) {
+	private void uponDecidedCommand(AgreementCmd cmd) {
 		var decided = cmd.getDecided();
 
 		this.deciding = false;
@@ -105,43 +113,53 @@ public class MultipaxosProtocol extends GenericProtocol {
 		// TODO;
 	}
 
-	private void uponSendPrepareRequestCommand(PaxosCmd cmd) {
+	private void uponNewLeaderCommand(AgreementCmd cmd) {
+		// TODO: Trigger notification indicating that a new leader has been elected
+		this.leaderId = cmd.getNewLeader().processId();
+	}
+
+	private void uponSendPrepareRequestCommand(AgreementCmd cmd) {
 		var prepare = cmd.getSendPrepareRequest();
-		var message = new PrepareRequest(); // TODO;
+		// var message = new PrepareRequest(instance, membership, ballot); // TODO;
 
 		// TODO: This should only happen if this Node wants to suggest being the new leader.
 
 		if (prepare.processId().equals(this.id)) {
 			logger.trace("Sending PrepareRequestMessage to self");
-			this.multipaxos.receivePrepareRequest(prepare.processId(), prepare.ballot());
+			// this.multipaxos.receivePrepareRequest(prepare.processId(), prepare.ballot());
 		} else {
 			var host = PaxosBabel.hostFromProcessId(prepare.processId());
 			logger.trace("Sending PrepareRequestMessage to {}", host);
-			this.sendMessage(message, host);
+			// this.sendMessage(message, host);
 		}
 	}
 
-	private void uponSendPrepareOkCommand(PaxosCmd cmd) {
+	private void uponSendPrepareOkCommand(AgreementCmd cmd) {
 		var prepareOk = cmd.getSendPrepareOk();
 	}
 
-	private void uponSendAcceptRequestCommand(PaxosCmd cmd) {
+	private void uponSendAcceptRequestCommand(AgreementCmd cmd) {
 		var sendAcceptRequest = cmd.getSendAcceptRequest();
+
+		// only the leader may send accept requests
+		assert leaderId == id;
+
+
 	}
 
-	private void uponSendAcceptOkCommand(PaxosCmd cmd) {
+	private void uponSendAcceptOkCommand(AgreementCmd cmd) {
 		var sendAcceptOk = cmd.getSendAcceptOk();
 	}
 
-	private void uponSendDecidedCommand(PaxosCmd cmd) {
+	private void uponSendDecidedCommand(AgreementCmd cmd) {
 		var sendDecided = cmd.getSendDecided();
 	}
 
-	private void uponSetupTimerCommand(PaxosCmd cmd) {
+	private void uponSetupTimerCommand(AgreementCmd cmd) {
 		var setupTimer = cmd.getSetupTimer();
 	}
 
-	private void uponCancelTimerCommand(PaxosCmd cmd) {
+	private void uponCancelTimerCommand(AgreementCmd cmd) {
 		var cancelTimer = cmd.getCancelTimer();
 	}
 
@@ -167,11 +185,25 @@ public class MultipaxosProtocol extends GenericProtocol {
 	private void onPrepareOk(PrepareOk msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare ok from {}", host);
 		// TODO;
+
+		/*
+			Multipaxos must receive this request
+			Multipaxos must check if the ballot is valid
+			Multipaxos must check if he received a quorum of prepareOk's to determine if he's the new leader
+	    */
 	}
 
 	private void onPrepareRequest(PrepareRequest msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare request from {}", host);
 		// TODO;
+
+		/*
+			Multipaxos must receive this request,
+			Multipaxos needs to convert decide if this new node is the leader
+			Multipaxos needs to send a prepareOk to the new leader
+
+			In here, we need to trigger a LeaderElection notification
+	    */
 	}
 
 	/*--------------------------------- Request Handlers ---------------------------------------- */

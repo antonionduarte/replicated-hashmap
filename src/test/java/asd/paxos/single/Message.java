@@ -1,12 +1,13 @@
 package asd.paxos.single;
 
+import asd.paxos.AgreementCmd;
 import asd.paxos.ProcessId;
 
 public class Message {
     public final ProcessId sender;
-    public final PaxosCmd command;
+    public final AgreementCmd command;
 
-    public Message(ProcessId sender, PaxosCmd command) {
+    public Message(ProcessId sender, AgreementCmd command) {
         this.sender = sender;
         this.command = command;
     }
@@ -16,66 +17,66 @@ public class Message {
     }
 
     public boolean isDecided() {
-        return this.command.getKind() == PaxosCmd.Kind.Decided;
+        return this.command.getKind() == AgreementCmd.Kind.Decided;
     }
 
-    public PaxosCmd.Decided getDecided() {
+    public AgreementCmd.Decided getDecided() {
         return this.command.getDecided();
     }
 
     public boolean isSendPrepareRequest() {
-        return this.command.getKind() == PaxosCmd.Kind.SendPrepareRequest;
+        return this.command.getKind() == AgreementCmd.Kind.SendPrepareRequest;
     }
 
-    public PaxosCmd.SendPrepareRequest getSendPrepareRequest() {
+    public AgreementCmd.SendPrepareRequest getSendPrepareRequest() {
         return this.command.getSendPrepareRequest();
     }
 
     public boolean isPrepareOk() {
-        return this.command.getKind() == PaxosCmd.Kind.SendPrepareOk;
+        return this.command.getKind() == AgreementCmd.Kind.SendPrepareOk;
     }
 
-    public PaxosCmd.SendPrepareOk getSendPrepareOk() {
+    public AgreementCmd.SendPrepareOk getSendPrepareOk() {
         return this.command.getSendPrepareOk();
     }
 
     public boolean isSendAcceptRequest() {
-        return this.command.getKind() == PaxosCmd.Kind.SendAcceptRequest;
+        return this.command.getKind() == AgreementCmd.Kind.SendAcceptRequest;
     }
 
-    public PaxosCmd.SendAcceptRequest getSendAcceptRequest() {
+    public AgreementCmd.SendAcceptRequest getSendAcceptRequest() {
         return this.command.getSendAcceptRequest();
     }
 
     public boolean isSendAcceptOk() {
-        return this.command.getKind() == PaxosCmd.Kind.SendAcceptOk;
+        return this.command.getKind() == AgreementCmd.Kind.SendAcceptOk;
     }
 
-    public PaxosCmd.SendAcceptOk getSendAcceptOk() {
+    public AgreementCmd.SendAcceptOk getSendAcceptOk() {
         return this.command.getSendAcceptOk();
     }
 
     public boolean isSendDecided() {
-        return this.command.getKind() == PaxosCmd.Kind.SendDecided;
+        return this.command.getKind() == AgreementCmd.Kind.SendDecided;
     }
 
-    public PaxosCmd.SendDecided getSendDecided() {
+    public AgreementCmd.SendDecided getSendDecided() {
         return this.command.getSendDecided();
     }
 
     public boolean isSetupTimer() {
-        return this.command.getKind() == PaxosCmd.Kind.SetupTimer;
+        return this.command.getKind() == AgreementCmd.Kind.SetupTimer;
     }
 
-    public PaxosCmd.SetupTimer getSetupTimer() {
+    public AgreementCmd.SetupTimer getSetupTimer() {
         return this.command.getSetupTimer();
     }
 
     public boolean isCancelTimer() {
-        return this.command.getKind() == PaxosCmd.Kind.CancelTimer;
+        return this.command.getKind() == AgreementCmd.Kind.CancelTimer;
     }
 
-    public PaxosCmd.CancelTimer getCancelTimer() {
+    public AgreementCmd.CancelTimer getCancelTimer() {
         return this.command.getCancelTimer();
     }
 

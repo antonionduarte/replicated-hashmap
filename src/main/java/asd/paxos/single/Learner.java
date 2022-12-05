@@ -1,5 +1,6 @@
 package asd.paxos.single;
 
+import asd.paxos.AgreementCmd;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,7 +34,7 @@ class Learner {
         if (this.value == null) {
             logger.debug("Decided on value {}", value);
             this.value = value;
-            this.io.push(PaxosCmd.decided(value));
+            this.io.push(AgreementCmd.decided(value));
         } else if (!this.value.equals(value)) {
             throw new IllegalStateException("Two different values were decided");
         } else {

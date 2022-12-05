@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
+import asd.paxos.AgreementCmd;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -65,9 +66,9 @@ class Proposer {
         this.isOriginalProposal = true;
         this.currentProposal = new Proposal(new Ballot(this.id, 0), value);
         this.acceptors.forEach(acceptor -> {
-            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
+            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
         });
-        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
+        this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
     }
 
     public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
@@ -101,7 +102,7 @@ class Proposer {
             this.currentPhase = Phase.ACCEPT;
             this.currentOks.clear();
             this.acceptors.forEach(acceptor -> {
-                this.io.push(PaxosCmd.sendAcceptRequest(acceptor, this.currentProposal));
+                this.io.push(AgreementCmd.sendAcceptRequest(acceptor, this.currentProposal));
             });
         }
     }
@@ -123,12 +124,12 @@ class Proposer {
         this.currentOks.add(processId);
         if (this.currentOks.size() == this.quorumSize) {
             logger.debug("Got quorum of acceptOks, moving to Decided phase");
-            this.io.push(PaxosCmd.cancelTimer(this.currentTimerId));
+            this.io.push(AgreementCmd.cancelTimer(this.currentTimerId));
             this.currentTimerId += 1;
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.io.push(PaxosCmd.sendDecided(learner, this.currentProposal.value));
+                this.io.push(AgreementCmd.sendDecided(learner, this.currentProposal.value));
             });
         }
     }
@@ -142,9 +143,9 @@ class Proposer {
         this.currentProposal = this.currentProposal.withIncSeqNumber();
         this.currentOks.clear();
         this.acceptors.forEach(acceptor -> {
-            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
+            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
         });
-        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
+        this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
     }
 
     private Duration getRandomisedMajorityTimeout() {

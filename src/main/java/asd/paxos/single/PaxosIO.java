@@ -1,5 +1,7 @@
 package asd.paxos.single;
 
+import asd.paxos.AgreementCmd;
+
 public interface PaxosIO {
-    void push(PaxosCmd cmd);
+    void push(AgreementCmd cmd);
 }

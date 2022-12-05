@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import asd.paxos.AgreementCmd;
 import org.junit.Test;
 
 import asd.paxos.Ballot;
@@ -31,7 +32,7 @@ public class ProposerTest {
             var expectedIds = new HashSet<>(Arrays.asList(membership.acceptors));
             var obtainedIds = commands.stream().filter(Message::isSendPrepareRequest)
                     .map(Message::getSendPrepareRequest)
-                    .map(PaxosCmd.SendPrepareRequest::processId).collect(Collectors.toSet());
+                    .map(AgreementCmd.SendPrepareRequest::processId).collect(Collectors.toSet());
             assertEquals(expectedIds, obtainedIds);
         }
     }
@@ -57,7 +58,7 @@ public class ProposerTest {
             var commands = queue.popAll();
             var expectedIds = new HashSet<>(Arrays.asList(membership.acceptors));
             var obtainedIds = commands.stream().filter(Message::isSendAcceptRequest).map(Message::getSendAcceptRequest)
-                    .map(PaxosCmd.SendAcceptRequest::processId).collect(Collectors.toSet());
+                    .map(AgreementCmd.SendAcceptRequest::processId).collect(Collectors.toSet());
             assertEquals(expectedIds, obtainedIds);
         }
         proposer.receivePrepareOk(membership.acceptors[3], new Ballot(0, 0), Optional.empty());
@@ -113,7 +114,7 @@ public class ProposerTest {
             var commands = queue.popAll();
             var expectedIds = new HashSet<>(Arrays.asList(membership.learners));
             var obtainedIds = commands.stream().filter(Message::isSendDecided).map(Message::getSendDecided)
-                    .map(PaxosCmd.SendDecided::processId).collect(Collectors.toSet());
+                    .map(AgreementCmd.SendDecided::processId).collect(Collectors.toSet());
             assertEquals(expectedIds, obtainedIds);
         }
         proposer.receiveAcceptOk(membership.acceptors[3], new Ballot(0, 0));

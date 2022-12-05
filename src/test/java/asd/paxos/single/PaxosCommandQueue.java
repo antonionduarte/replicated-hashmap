@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 
+import asd.paxos.AgreementCmd;
 import asd.paxos.ProcessId;
 
 public class PaxosCommandQueue {
@@ -18,7 +19,7 @@ public class PaxosCommandQueue {
         }
 
         @Override
-        public void push(PaxosCmd cmd) {
+        public void push(AgreementCmd cmd) {
             this.queue.add(new Message(this.processId, cmd));
         }
 
