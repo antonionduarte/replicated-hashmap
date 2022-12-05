@@ -17,7 +17,7 @@ public class Acceptor {
 	private final ProcessId id;
 
 	private Map<Integer, Proposal> acceptedProposals; // slot -> proposal
-	private Map<Integer, Ballot> promises; // slot -> ballot
+	private Map<Integer, Ballot> promises; // slot -> ballot TODO this is dumb.
 
 	public Acceptor(MultipaxosIO multipaxosIO, ProcessId id, MultipaxosConfig config) {
 		this.multipaxosIO = multipaxosIO;
@@ -28,7 +28,7 @@ public class Acceptor {
 	}
 
 	public void onPrepareRequest(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
-
+		
 	}
 
 	public void onAcceptRequest(ProcessId processId, Proposal proposal) {

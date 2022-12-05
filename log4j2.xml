@@ -12,14 +12,14 @@
     </Appenders>
 
     <Loggers>
-        <Logger level="info" name="asd"/>
+        <Logger level="trace" name="asd"/>
 
         <Logger level="warn" name="io.netty"/>
         <Logger level="warn" name="network"/>
         <Logger level="warn" name="channel"/>
         <Logger level="warn" name="babel"/>
 
-        <Root level="info">
+        <Root level="trace">
             <AppenderRef ref="Console" level="all"/>
             <AppenderRef ref="MyFile" level="warn"/>
         </Root>

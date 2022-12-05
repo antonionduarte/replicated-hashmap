@@ -22,6 +22,7 @@ public class CommandQueue {
     }
 
     public OrderedCommand popReadyCommand() {
+        assert this.hasReadyCommand();
         lastExecutedInstance++;
         return queue.poll();
     }

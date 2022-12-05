@@ -5,6 +5,8 @@ import java.util.Optional;
 
 import asd.paxos.single.Proposal;
 
+// TODO should create different for paxos and multipaxos, because the proposal of both protocols is different
+// and the proposal used by command thingy uses the proposal of the single paxos
 public class AgreementCmd {
     public static enum Kind {
         Decided, SendPrepareRequest, SendPrepareOk, SendAcceptRequest, SendAcceptOk, SendDecided, SetupTimer, CancelTimer, NewLeader

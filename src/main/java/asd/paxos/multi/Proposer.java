@@ -80,10 +80,12 @@ public class Proposer {
 			throw new IllegalStateException("Not in prepare phase");
 
 		// TODO: Detect if leader is behind current slot? I think?
+		// Se o lider tiver recebido uma prepareOk de um acceptor, com um Proposal com optional present, 
+		// tem de aceitar esse proposal, se ainda nao tiver aceite nenhum proposal, ou se proposal tiver um ballot maior
 	}
 
 	public boolean canPropose() {
-		return false; // TODO
+		return false; // TODO talvez nao seja necessario no multipaxos
 	}
 
 	public void receiveAcceptOk(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
