@@ -77,6 +77,11 @@ class Proposer {
         if (this.proposalValue == null)
             throw new IllegalStateException("Don't have a proposal");
 
+        if (!this.acceptors.contains(processId)) {
+            logger.debug("Ignoring prepareOk from {} because it's not an acceptor", processId);
+            return;
+        }
+
         if (this.currentPhase != Phase.PREPARE) {
             logger.debug("Ignoring prepareOk from {} because we're in phase {}", processId, this.currentPhase);
             return;
@@ -124,6 +129,11 @@ class Proposer {
     public void receiveAcceptOk(ProcessId processId, Ballot ballot) {
         if (this.proposalValue == null)
             throw new IllegalStateException("Don't have a proposal");
+
+        if (!this.acceptors.contains(processId)) {
+            logger.debug("Ignoring acceptOk from {} because it's not an acceptor", processId);
+            return;
+        }
 
         if (this.currentPhase != Phase.ACCEPT) {
             logger.debug("Ignoring acceptOk from {} because we're in phase {}", processId, this.currentPhase);

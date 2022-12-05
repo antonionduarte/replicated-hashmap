@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 
 import asd.paxos.Ballot;
+import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 
 public class ProposerTest {
@@ -118,6 +119,38 @@ public class ProposerTest {
         }
         proposer.receiveAcceptOk(membership.acceptors[3], new Ballot(0, 0));
         proposer.receiveAcceptOk(membership.acceptors[4], new Ballot(0, 0));
+        assertTrue(queue.isEmpty());
+    }
+
+    @Test
+    public void ignoreProcessNotInMembership() {
+        var queue = new PaxosCommandQueue();
+        var membership = PaxosTestUtils.createMembershipTriple(1, 5, 0);
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var proposer = new Proposer(membership.proposers[0], queue.getIO(membership.proposers[0]), config);
+        var foreign = new ProcessId(1000);
+
+        proposer.propose(new ProposalValue("test"));
+        queue.popAll();
+
+        // Receive 3 OK's
+        proposer.receivePrepareOk(membership.acceptors[0], new Ballot(0, 0), Optional.empty());
+        proposer.receivePrepareOk(membership.acceptors[1], new Ballot(0, 0), Optional.empty());
+        assertTrue(queue.isEmpty());
+        proposer.receivePrepareOk(foreign, new Ballot(0, 0), Optional.empty());
+        assertTrue(queue.isEmpty());
+        proposer.receivePrepareOk(membership.acceptors[2], new Ballot(0, 0), Optional.empty());
+        {
+            var commands = queue.popAll();
+            var expectedIds = new HashSet<>(Arrays.asList(membership.acceptors));
+            var obtainedIds = commands.stream().filter(Message::isSendAcceptRequest).map(Message::getSendAcceptRequest)
+                    .map(PaxosCmd.SendAcceptRequest::processId).collect(Collectors.toSet());
+            assertEquals(expectedIds, obtainedIds);
+        }
+        proposer.receivePrepareOk(membership.acceptors[3], new Ballot(0, 0), Optional.empty());
+        proposer.receivePrepareOk(membership.acceptors[4], new Ballot(0, 0), Optional.empty());
         assertTrue(queue.isEmpty());
     }
 

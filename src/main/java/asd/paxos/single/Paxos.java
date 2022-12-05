@@ -15,7 +15,7 @@ public class Paxos {
     public Paxos(ProcessId id, PaxosIO io, PaxosConfig config) {
         this.id = id;
         this.proposer = new Proposer(id, io, config);
-        this.acceptor = new Acceptor(id, io);
+        this.acceptor = new Acceptor(id, io, config);
         this.learner = new Learner(id, io);
     }
 

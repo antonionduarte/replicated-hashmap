@@ -15,7 +15,10 @@ public class AcceptorTest {
     public void acceptInitialPrepareRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 1));
         {
@@ -32,7 +35,10 @@ public class AcceptorTest {
     public void acceptHigherPrepareRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 1));
         queue.popAll();
@@ -52,7 +58,10 @@ public class AcceptorTest {
     public void rejectLowerPrepareRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 2));
         queue.popAll();
@@ -65,7 +74,10 @@ public class AcceptorTest {
     public void acceptHigherAcceptRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 1));
         queue.popAll();
@@ -87,7 +99,10 @@ public class AcceptorTest {
     public void sendsHighestAcceptOnHigherAcceptRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 1));
         queue.popAll();
@@ -115,7 +130,10 @@ public class AcceptorTest {
     public void rejectLowerAcceptRequest() {
         var queue = new PaxosCommandQueue();
         var membership = PaxosTestUtils.createMembershipTriple(5, 1, 0);
-        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]));
+        var config = PaxosConfig.builder()
+                .withProposers(membership.proposerList())
+                .withAcceptors(membership.acceptorList()).build();
+        var acceptor = new Acceptor(membership.acceptors[0], queue.getIO(membership.acceptors[0]), config);
 
         acceptor.onPrepareRequest(membership.proposers[0], new Ballot(0, 2));
         queue.popAll();
