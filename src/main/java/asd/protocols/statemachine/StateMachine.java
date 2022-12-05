@@ -145,6 +145,10 @@ public class StateMachine extends GenericProtocol {
 		registerChannelEventHandler(channelId, InConnectionDown.EVENT_ID, this::uponInConnectionDown);
 		// registerChannelEventHandler(channelId, ..., this::uponMsgFail);
 
+		/*--------------------- Register Message Serializers ---------------------- */
+		registerMessageSerializer(channelId, SystemJoin.ID, SystemJoin.serializer);
+		registerMessageSerializer(channelId, SystemJoinReply.ID, SystemJoinReply.serializer);
+
 		/*--------------------- Register Message Handlers ----------------------------- */
 		registerMessageHandler(channelId, SystemJoin.ID, this::uponSystemJoin);
 		registerMessageHandler(channelId, SystemJoinReply.ID, this::uponSystemJoinReply);
@@ -241,6 +245,9 @@ public class StateMachine extends GenericProtocol {
 
 				if (this.joiningReplicas.contains(join.host)) {
 					sendRequest(new CurrentStateRequest(instance), HashApp.PROTO_ID);
+				} else {
+					var notification = new UnchangedConfigurationNotification(instance);
+					this.triggerNotification(notification);
 				}
 			}
 			case LEAVE -> {
@@ -248,6 +255,9 @@ public class StateMachine extends GenericProtocol {
 				if (this.membership.remove(leave.host)) {
 					var request = new RemoveReplicaRequest(instance, leave.host);
 					this.sendRequest(request, Agreement.ID);
+				} else {
+					var notification = new UnchangedConfigurationNotification(instance);
+					this.triggerNotification(notification);
 				}
 			}
 			case NOOP -> {
@@ -300,7 +310,7 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("CurrentStateReply with no joining replica");
 			return;
 		}
-		sendMessage(new SystemJoinReply(membership, reply.getInstance(), reply.getState()), joiningReplica);
+		sendMessage(new SystemJoinReply(membership, reply.getInstance() + 1, reply.getState()), joiningReplica);
 	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */

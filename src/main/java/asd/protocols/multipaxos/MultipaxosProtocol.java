@@ -39,7 +39,7 @@ import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class MultipaxosProtocol extends GenericProtocol {
-	public final static String NAME = "Paxos";
+	public final static String NAME = "MultiPaxos";
 
 	private static final Logger logger = LogManager.getLogger(PaxosProtocol.class);
 

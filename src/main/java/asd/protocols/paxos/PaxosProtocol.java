@@ -258,6 +258,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             /*- If the next instance is null that means that we don't know its membership yet.
             *   We have to wait until we receive a message from another member with the membership
             *   or the state machine tells us that our previous decision did not change the membership. */
+            PaxosLog.log("waiting-for-membership");
             return;
         }
 
@@ -367,24 +368,23 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
     private void onAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
         logger.info("Received add replica request {}", request);
-        if (request.instance == nextInstance && !this.instances.containsKey(request.instance)) {
-            var membership = new ArrayList<>(this.instances.get(request.instance - 1).membership);
-            var replicaId = PaxosBabel.hostToProcessId(request.replica);
-            membership.add(replicaId);
-            this.upsertInstanceWithMembership(request.instance, membership);
-        }
+        logger.info("Adding replica to membership: {}", request.replica);
+        var membership = new ArrayList<>(this.instances.get(request.instance).membership);
+        var replicaId = PaxosBabel.hostToProcessId(request.replica);
+        membership.add(replicaId);
+        this.upsertInstanceWithMembership(request.instance + 1, membership);
+        this.tryPropose();
     }
 
     private void onRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
         logger.info("Received remove replica request {}", request);
-        if (request.instance == nextInstance && !this.instances.containsKey(request.instance)) {
-            logger.info("Removing replica from membership: {}", request.replica);
-            var replicaId = PaxosBabel.hostToProcessId(request.replica);
-            var membership = this.instances.get(request.instance - 1).membership.stream()
-                    .filter(id -> !id.equals(replicaId))
-                    .toList();
-            this.upsertInstanceWithMembership(request.instance, membership);
-        }
+        logger.info("Removing replica from membership: {}", request.replica);
+        var replicaId = PaxosBabel.hostToProcessId(request.replica);
+        var membership = this.instances.get(request.instance).membership.stream()
+                .filter(id -> !id.equals(replicaId))
+                .toList();
+        this.upsertInstanceWithMembership(request.instance + 1, membership);
+        this.tryPropose();
     }
 
     /*--------------------------------- Notification Handlers ---------------------------------------- */
@@ -417,7 +417,12 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     }
 
     private void onJoined(JoinedNotification notification, short sourceProto) {
-        assert this.instances.isEmpty();
+        // This does not have to be true since by the time we receive the joined
+        // notification,
+        // we may have already received messages from other replicas that have started
+        // instances
+        // after our join instance.
+        // assert this.instances.isEmpty();
 
         logger.info("Joined notification received: {}", notification);
 
