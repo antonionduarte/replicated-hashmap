@@ -121,4 +121,5 @@ public class ProposerTest {
         proposer.receiveAcceptOk(membership.acceptors[4], new Ballot(0, 0));
         assertTrue(queue.isEmpty());
     }
+
 }

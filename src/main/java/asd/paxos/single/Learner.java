@@ -1,6 +1,8 @@
 package asd.paxos.single;
 
 import asd.paxos.AgreementCmd;
+import asd.paxos.PaxosLog;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -32,13 +34,16 @@ class Learner {
 
     public void onDecide(ProposalValue value) {
         if (this.value == null) {
+            PaxosLog.log("learned", "value", value);
             logger.debug("Decided on value {}", value);
             this.value = value;
             this.io.push(AgreementCmd.decided(value));
         } else if (!this.value.equals(value)) {
+            PaxosLog.log("decision-conflict");
             throw new IllegalStateException("Two different values were decided");
         } else {
             logger.debug("Ignoring duplicate decide");
+            PaxosLog.log("learn-duplicate");
         }
     }
 }

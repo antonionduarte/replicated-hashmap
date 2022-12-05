@@ -47,6 +47,17 @@ public class PaxosCommandQueue {
         return commands;
     }
 
+    public int popAllAndGetTimerId() {
+        var timerId = -1;
+        while (!this.queue.isEmpty()) {
+            var message = this.queue.remove();
+            if (message.command.getKind() == AgreementCmd.Kind.SetupTimer) {
+                timerId = message.command.getSetupTimer().timerId();
+            }
+        }
+        return timerId;
+    }
+
     public boolean isEmpty() {
         return this.queue.isEmpty();
     }

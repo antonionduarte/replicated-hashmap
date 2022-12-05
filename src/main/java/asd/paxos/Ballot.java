@@ -31,6 +31,13 @@ public class Ballot implements Comparable<Ballot> {
         return new Ballot(this.processId, this.sequenceNumber + inc);
     }
 
+    public Ballot max(Ballot other) {
+        if (this.compare(other) == Order.GREATER)
+            return this;
+        else
+            return other;
+    }
+
     public Order compare(Ballot other) {
         var number = this.compareTo(other);
         if (number == 0)

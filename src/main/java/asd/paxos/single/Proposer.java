@@ -10,6 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import asd.paxos.Ballot;
+import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 
@@ -27,9 +28,10 @@ class Proposer {
     private final int quorumSize;
     private final Duration majorityTimeout;
 
+    private Ballot currentBallot;
+    private Ballot proposalBallot;
     // Can be null if we don't have a proposal for this instance yet.
-    private boolean isOriginalProposal;
-    private Proposal currentProposal;
+    private ProposalValue proposalValue;
     private Phase currentPhase;
     private Set<ProcessId> currentOks;
     private int currentTimerId;
@@ -42,8 +44,9 @@ class Proposer {
         this.quorumSize = (this.acceptors.size() / 2) + 1;
         this.majorityTimeout = config.majorityTimeout;
 
-        this.isOriginalProposal = false;
-        this.currentProposal = null;
+        this.currentBallot = new Ballot(id, 0);
+        this.proposalBallot = new Ballot();
+        this.proposalValue = null;
         this.currentPhase = Phase.PREPARE;
         this.currentOks = new HashSet<>();
         this.currentTimerId = 0;
@@ -54,25 +57,25 @@ class Proposer {
     }
 
     public boolean canPropose() {
-        return this.currentPhase == Phase.PREPARE && this.currentProposal == null;
+        return this.currentPhase == Phase.PREPARE && this.proposalValue == null;
     }
 
     public void propose(ProposalValue value) {
-        if (this.currentProposal != null)
+        if (this.proposalValue != null)
             throw new IllegalStateException("Already have a proposal");
         assert this.currentPhase == Phase.PREPARE;
 
+        PaxosLog.log("propose", "value", value);
         logger.debug("Proposing value {}", value);
-        this.isOriginalProposal = true;
-        this.currentProposal = new Proposal(new Ballot(this.id, 0), value);
+        this.proposalValue = value;
         this.acceptors.forEach(acceptor -> {
-            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
+            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentBallot));
         });
         this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
     }
 
     public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
-        if (this.currentProposal == null)
+        if (this.proposalValue == null)
             throw new IllegalStateException("Don't have a proposal");
 
         if (this.currentPhase != Phase.PREPARE) {
@@ -80,35 +83,47 @@ class Proposer {
             return;
         }
 
-        if (!ballot.equals(this.currentProposal.ballot)) {
+        if (!ballot.equals(this.currentBallot)) {
             logger.debug("Ignoring prepareOk from {} because it's for a different ballot", processId);
             return;
         }
 
+        PaxosLog.log("received-prepare-ok",
+                "from", processId,
+                "ballot", ballot,
+                "highestAccept", highestAccept.orElse(null));
+
         if (highestAccept.isPresent()) {
             var accept = highestAccept.get();
-            if (this.isOriginalProposal || accept.ballot.compare(this.currentProposal.ballot) == Ballot.Order.GREATER) {
-                this.currentProposal = accept;
-                this.isOriginalProposal = false;
-                logger.debug("Updated proposal to {}", this.currentProposal);
+            if (this.proposalBallot.compare(accept.ballot) != Ballot.Order.GREATER) {
+                PaxosLog.log("updated-proposal",
+                        "old", new Proposal(this.proposalBallot, this.proposalValue),
+                        "new", accept);
+                this.proposalValue = accept.value;
+                this.proposalBallot = accept.ballot;
+                logger.debug("Updated proposal to {}", accept);
             }
         }
 
         this.currentOks.add(processId);
-        if (this.currentOks.size() == this.quorumSize)
+        if (this.currentOks.size() == this.quorumSize) {
+            var sentProposal = new Proposal(this.currentBallot, this.proposalValue);
+            PaxosLog.log("majority-prepare-ok",
+                    "currentBallot", this.currentBallot,
+                    "proposal", new Proposal(this.proposalBallot, this.proposalValue),
+                    "sentProposal", sentProposal);
 
-        {
             logger.debug("Got quorum of prepareOks, moving to Accept phase");
             this.currentPhase = Phase.ACCEPT;
             this.currentOks.clear();
             this.acceptors.forEach(acceptor -> {
-                this.io.push(AgreementCmd.sendAcceptRequest(acceptor, this.currentProposal));
+                this.io.push(AgreementCmd.sendAcceptRequest(acceptor, sentProposal));
             });
         }
     }
 
     public void receiveAcceptOk(ProcessId processId, Ballot ballot) {
-        if (this.currentProposal == null)
+        if (this.proposalValue == null)
             throw new IllegalStateException("Don't have a proposal");
 
         if (this.currentPhase != Phase.ACCEPT) {
@@ -116,20 +131,28 @@ class Proposer {
             return;
         }
 
-        if (!ballot.equals(this.currentProposal.ballot)) {
+        if (!ballot.equals(this.currentBallot)) {
             logger.debug("Ignoring acceptOk from {} because it's for a different ballot", processId);
             return;
         }
 
+        PaxosLog.log("received-accept-ok",
+                "from", processId,
+                "ballot", ballot);
+
         this.currentOks.add(processId);
         if (this.currentOks.size() == this.quorumSize) {
+            PaxosLog.log("majority-accept-ok",
+                    "currentBallot", this.currentBallot,
+                    "value", this.proposalValue);
+
             logger.debug("Got quorum of acceptOks, moving to Decided phase");
             this.io.push(AgreementCmd.cancelTimer(this.currentTimerId));
             this.currentTimerId += 1;
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.io.push(AgreementCmd.sendDecided(learner, this.currentProposal.value));
+                this.io.push(AgreementCmd.sendDecided(learner, this.proposalValue));
             });
         }
     }
@@ -137,13 +160,24 @@ class Proposer {
     public void triggerTimer(int timerId) {
         assert this.currentTimerId == timerId;
 
+        PaxosLog.log("majority-timeout",
+                "phase", this.currentPhase,
+                "currentBallot", this.currentBallot,
+                "proposalBallot", this.proposalBallot,
+                "proposalValue", this.proposalValue);
+
         logger.debug("Majority timeout triggered");
         this.currentTimerId += 1;
         this.currentPhase = Phase.PREPARE;
-        this.currentProposal = this.currentProposal.withIncSeqNumber();
+        this.currentBallot = new Ballot(this.id,
+                Math.max(this.currentBallot.sequenceNumber, this.proposalBallot.sequenceNumber) + 1);
+        // Reset the proposalBallot so that if we receive a proposal value from a
+        // prepareOk then we replace our value with that one since that value's ballot
+        // will always be greater than the default ballot
+        this.proposalBallot = new Ballot();
         this.currentOks.clear();
         this.acceptors.forEach(acceptor -> {
-            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentProposal.ballot));
+            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentBallot));
         });
         this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
     }

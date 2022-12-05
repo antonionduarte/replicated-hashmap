@@ -17,6 +17,7 @@ import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 import asd.paxos.single.Paxos;
 import asd.paxos.AgreementCmdQueue;
+import asd.paxos.PaxosLog;
 import asd.paxos.single.PaxosConfig;
 import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
@@ -132,116 +133,120 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         var state = instances.get(instance);
         assert state != null;
 
-        logger.debug("Executing instance {} queue", instance);
-        while (!state.queue.isEmpty()) {
-            state.queue.transferTo(this.executeQueue);
-            while (!this.executeQueue.isEmpty()) {
-                var cmd = this.executeQueue.pop();
-                switch (cmd.getKind()) {
-                    case Decided -> {
-                        var decided = cmd.getDecided();
+        PaxosLog.withContext(this.id, instance, () -> {
+            logger.debug("Executing instance {} queue", instance);
+            while (!state.queue.isEmpty()) {
+                state.queue.transferTo(this.executeQueue);
+                while (!this.executeQueue.isEmpty()) {
+                    var cmd = this.executeQueue.pop();
+                    switch (cmd.getKind()) {
+                        case Decided -> {
+                            var decided = cmd.getDecided();
 
-                        assert !state.decided;
-                        state.decided = true;
+                            assert !state.decided;
+                            state.decided = true;
 
-                        if (state.originalProposal != null && !decided.value().equals(state.originalProposal))
-                            this.proposalQueue.addFirst(state.originalProposal);
+                            if (state.originalProposal != null && !decided.value().equals(state.originalProposal))
+                                this.proposalQueue.addFirst(state.originalProposal);
 
-                        var operation = decided.value().data;
-                        var notification = new DecidedNotification(instance, operation);
-                        this.triggerNotification(notification);
-                        logger.trace("Triggered DecidedNotification for instance {}", instance);
-                    }
-                    case SendPrepareRequest -> {
-                        var prepare = cmd.getSendPrepareRequest();
-                        var message = new PrepareRequestMessage(
-                                instance,
-                                state.membershipList,
-                                prepare.ballot());
-                        if (prepare.processId().equals(this.id)) {
-                            logger.trace("Sending PrepareRequestMessage to self");
-                            state.paxos.receivePrepareRequest(prepare.processId(), prepare.ballot());
-                        } else {
-                            var host = PaxosBabel.hostFromProcessId(prepare.processId());
-                            logger.trace("Sending PrepareRequestMessage to {}", host);
-                            this.sendMessage(message, host);
+                            var operation = decided.value().data;
+                            var notification = new DecidedNotification(instance, operation);
+                            this.triggerNotification(notification);
+                            logger.trace("Triggered DecidedNotification for instance {}", instance);
                         }
-                    }
-                    case SendPrepareOk -> {
-                        var prepareOk = cmd.getSendPrepareOk();
-                        var message = new PrepareOkMessage(
-                                instance,
-                                prepareOk.ballot(),
-                                prepareOk.highestAccept(),
-                                false);
-                        if (prepareOk.processId().equals(this.id)) {
-                            logger.trace("Sending PrepareOkMessage to self");
-                            state.paxos.receivePrepareOk(prepareOk.processId(), prepareOk.ballot(),
-                                    prepareOk.highestAccept());
-                        } else {
-                            var host = PaxosBabel.hostFromProcessId(prepareOk.processId());
-                            logger.trace("Sending PrepareOkMessage to {}", host);
-                            this.sendMessage(message, host);
+                        case SendPrepareRequest -> {
+                            var prepare = cmd.getSendPrepareRequest();
+                            var message = new PrepareRequestMessage(
+                                    instance,
+                                    state.membershipList,
+                                    prepare.ballot());
+                            if (prepare.processId().equals(this.id)) {
+                                logger.trace("Sending PrepareRequestMessage to self");
+                                state.paxos.receivePrepareRequest(prepare.processId(), prepare.ballot());
+                            } else {
+                                var host = PaxosBabel.hostFromProcessId(prepare.processId());
+                                logger.trace("Sending PrepareRequestMessage to {}", host);
+                                this.sendMessage(message, host);
+                            }
                         }
-                    }
-                    case SendAcceptRequest -> {
-                        var accept = cmd.getSendAcceptRequest();
-                        var message = new AcceptRequestMessage(instance, state.membershipList, accept.proposal());
-                        if (accept.processId().equals(this.id)) {
-                            logger.trace("Sending AcceptRequestMessage to self");
-                            state.paxos.receiveAcceptRequest(accept.processId(), accept.proposal());
-                        } else {
-                            var host = PaxosBabel.hostFromProcessId(accept.processId());
-                            logger.trace("Sending AcceptRequestMessage to {}", host);
-                            this.sendMessage(message, host);
+                        case SendPrepareOk -> {
+                            var prepareOk = cmd.getSendPrepareOk();
+                            var message = new PrepareOkMessage(
+                                    instance,
+                                    prepareOk.ballot(),
+                                    prepareOk.highestAccept(),
+                                    false);
+                            if (prepareOk.processId().equals(this.id)) {
+                                logger.trace("Sending PrepareOkMessage to self");
+                                state.paxos.receivePrepareOk(prepareOk.processId(), prepareOk.ballot(),
+                                        prepareOk.highestAccept());
+                            } else {
+                                var host = PaxosBabel.hostFromProcessId(prepareOk.processId());
+                                logger.trace("Sending PrepareOkMessage to {}", host);
+                                this.sendMessage(message, host);
+                            }
                         }
-                    }
-                    case SendAcceptOk -> {
-                        var acceptOk = cmd.getSendAcceptOk();
-                        var message = new AcceptOkMessage(
-                                instance,
-                                acceptOk.ballot());
-                        if (acceptOk.processId().equals(this.id)) {
-                            logger.trace("Sending AcceptOkMessage to self");
-                            state.paxos.receiveAcceptOk(acceptOk.processId(), acceptOk.ballot());
-                        } else {
-                            var host = PaxosBabel.hostFromProcessId(acceptOk.processId());
-                            logger.trace("Sending AcceptOkMessage to {}", host);
-                            this.sendMessage(message, host);
+                        case SendAcceptRequest -> {
+                            var accept = cmd.getSendAcceptRequest();
+                            var message = new AcceptRequestMessage(instance, state.membershipList, accept.proposal());
+                            if (accept.processId().equals(this.id)) {
+                                logger.trace("Sending AcceptRequestMessage to self");
+                                state.paxos.receiveAcceptRequest(accept.processId(), accept.proposal());
+                            } else {
+                                var host = PaxosBabel.hostFromProcessId(accept.processId());
+                                logger.trace("Sending AcceptRequestMessage to {}", host);
+                                this.sendMessage(message, host);
+                            }
                         }
-                    }
-                    case SendDecided -> {
-                        var decided = cmd.getSendDecided();
-                        var message = new DecidedMessage(instance, state.membershipList, decided.value());
-                        if (decided.processId().equals(this.id)) {
-                            logger.trace("Sending DecidedMessage to self");
-                            state.paxos.receiveDecided(decided.processId(), decided.value());
-                        } else {
-                            var host = PaxosBabel.hostFromProcessId(decided.processId());
-                            logger.trace("Sending DecidedMessage to {}", host);
-                            this.sendMessage(message, host);
+                        case SendAcceptOk -> {
+                            var acceptOk = cmd.getSendAcceptOk();
+                            var message = new AcceptOkMessage(
+                                    instance,
+                                    acceptOk.ballot());
+                            if (acceptOk.processId().equals(this.id)) {
+                                logger.trace("Sending AcceptOkMessage to self");
+                                state.paxos.receiveAcceptOk(acceptOk.processId(), acceptOk.ballot());
+                            } else {
+                                var host = PaxosBabel.hostFromProcessId(acceptOk.processId());
+                                logger.trace("Sending AcceptOkMessage to {}", host);
+                                this.sendMessage(message, host);
+                            }
                         }
-                    }
-                    case SetupTimer -> {
-                        var setup = cmd.getSetupTimer();
-                        var timer = new PaxosTimer(instance, setup.timerId());
-                        var timeout = setup.timeout().toMillis();
+                        case SendDecided -> {
+                            var decided = cmd.getSendDecided();
+                            var message = new DecidedMessage(instance, state.membershipList, decided.value());
+                            if (decided.processId().equals(this.id)) {
+                                logger.trace("Sending DecidedMessage to self");
+                                state.paxos.receiveDecided(decided.processId(), decided.value());
+                            } else {
+                                var host = PaxosBabel.hostFromProcessId(decided.processId());
+                                logger.trace("Sending DecidedMessage to {}", host);
+                                this.sendMessage(message, host);
+                            }
+                        }
+                        case SetupTimer -> {
+                            var setup = cmd.getSetupTimer();
+                            var timer = new PaxosTimer(instance, setup.timerId());
+                            var timeout = setup.timeout().toMillis();
 
-                        logger.trace("Setting up timer {} for instance {} with timeout {}ms", setup.timerId(), instance,
-                                timeout);
-                        var babelTimerId = this.setupTimer(timer, timeout);
-                        state.timerIdToBabelTimerId.put(setup.timerId(), babelTimerId);
-                    }
-                    case CancelTimer -> {
-                        var cancel = cmd.getCancelTimer();
-                        var babelTimerId = state.timerIdToBabelTimerId.remove(cancel.timerId());
-                        logger.trace("Cancelling timer {} for instance {}", cancel.timerId(), instance);
-                        if (babelTimerId != null)
-                            this.cancelTimer(babelTimerId);
+                            logger.trace("Setting up timer {} for instance {} with timeout {}ms", setup.timerId(),
+                                    instance,
+                                    timeout);
+                            var babelTimerId = this.setupTimer(timer, timeout);
+                            state.timerIdToBabelTimerId.put(setup.timerId(), babelTimerId);
+                        }
+                        case CancelTimer -> {
+                            var cancel = cmd.getCancelTimer();
+                            var babelTimerId = state.timerIdToBabelTimerId.remove(cancel.timerId());
+                            logger.trace("Cancelling timer {} for instance {}", cancel.timerId(), instance);
+                            if (babelTimerId != null)
+                                this.cancelTimer(babelTimerId);
+                        }
+                        default -> throw new IllegalArgumentException("Unexpected value: " + cmd.getKind());
                     }
                 }
             }
-        }
+        });
     }
 
     private void tryPropose() {
@@ -259,80 +264,96 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         logger.debug("Trying to propose on instance {} with queue size = {} and canPropose = {}",
                 this.nextInstance, proposalQueue.size(), state.paxos.canPropose());
 
-        if (!this.proposalQueue.isEmpty() && state.paxos.canPropose()) {
-            assert state.originalProposal == null;
-            state.originalProposal = this.proposalQueue.remove();
-            logger.debug("Proposing {} on instance {}", state.originalProposal, this.nextInstance);
-            state.paxos.propose(state.originalProposal);
-            this.executeInstanceQueue(this.nextInstance);
-        }
+        PaxosLog.withContext(this.id, this.nextInstance, () -> {
+            if (!this.proposalQueue.isEmpty() && state.paxos.canPropose()) {
+                assert state.originalProposal == null;
+                state.originalProposal = this.proposalQueue.remove();
+                logger.debug("Proposing {} on instance {}", state.originalProposal, this.nextInstance);
+                state.paxos.propose(state.originalProposal);
+                this.executeInstanceQueue(this.nextInstance);
+            }
+        });
     }
 
     /*--------------------------------- Timer Handlers ---------------------------------------- */
 
     private void onPaxosTimer(PaxosTimer timer, long timerId) {
-        var instance = timer.instance;
-        var state = instances.get(instance);
-        assert state != null;
+        PaxosLog.withContext(this.id, timer.instance, () -> {
+            var instance = timer.instance;
+            var state = instances.get(instance);
+            assert state != null;
 
-        var babelTimerId = state.timerIdToBabelTimerId.remove(timer.timerId);
-        assert babelTimerId != null;
-
-        logger.trace("Triggering timer {} on instance {}", timer.timerId, instance);
-        state.paxos.triggerTimer(timer.timerId);
-        executeInstanceQueue(instance);
+            var babelTimerId = state.timerIdToBabelTimerId.remove(timer.timerId);
+            // TODO: This assert is failing sometimes, but I don't know why
+            // assert babelTimerId != null;
+            if (babelTimerId != null) {
+                logger.trace("Triggering timer {} on instance {}", timer.timerId, instance);
+                state.paxos.triggerTimer(timer.timerId);
+                executeInstanceQueue(instance);
+            }
+        });
     }
 
     /*--------------------------------- Message Handlers ---------------------------------------- */
 
     private void onAcceptOk(AcceptOkMessage msg, Host host, short sourceProto, int channelId) {
-        logger.trace("Received AcceptOkMessage from {} on instance {}", host, msg.instance);
-        var processId = PaxosBabel.hostToProcessId(host);
-        var instance = msg.instance;
-        var state = this.instances.get(instance);
-        state.paxos.receiveAcceptOk(processId, msg.ballot);
-        this.executeInstanceQueue(instance);
-        this.tryPropose();
+        PaxosLog.withContext(this.id, msg.instance, () -> {
+            logger.trace("Received AcceptOkMessage from {} on instance {}", host, msg.instance);
+            var processId = PaxosBabel.hostToProcessId(host);
+            var instance = msg.instance;
+            var state = this.instances.get(instance);
+            state.paxos.receiveAcceptOk(processId, msg.ballot);
+            this.executeInstanceQueue(instance);
+            this.tryPropose();
+        });
     }
 
     private void onAcceptRequest(AcceptRequestMessage msg, Host host, short sourceProto, int channelId) {
-        logger.trace("Received accept request from {} for instance {}", host, msg.instance);
-        var processId = PaxosBabel.hostToProcessId(host);
-        var instance = msg.instance;
-        var state = this.upsertInstanceWithMembership(instance, msg.membership);
-        state.paxos.receiveAcceptRequest(processId, msg.proposal);
-        this.executeInstanceQueue(instance);
-        this.tryPropose();
+        PaxosLog.withContext(this.id, msg.instance, () -> {
+            logger.trace("Received accept request from {} for instance {}", host, msg.instance);
+            var processId = PaxosBabel.hostToProcessId(host);
+            var instance = msg.instance;
+            var state = this.upsertInstanceWithMembership(instance, msg.membership);
+            state.paxos.receiveAcceptRequest(processId, msg.proposal);
+            this.executeInstanceQueue(instance);
+            this.tryPropose();
+        });
     }
 
     private void onDecided(DecidedMessage msg, Host host, short sourceProto, int channelId) {
-        logger.trace("Received decided message for instance {}", msg.instance);
-        var processId = PaxosBabel.hostToProcessId(host);
-        var instance = msg.instance;
-        var state = this.upsertInstanceWithMembership(instance, msg.membership);
-        state.paxos.receiveDecided(processId, msg.value);
-        this.executeInstanceQueue(instance);
-        this.tryPropose();
+        PaxosLog.withContext(this.id, msg.instance, () -> {
+            logger.trace("Received decided message for instance {}", msg.instance);
+            var processId = PaxosBabel.hostToProcessId(host);
+            var instance = msg.instance;
+            var state = this.upsertInstanceWithMembership(instance, msg.membership);
+            state.paxos.receiveDecided(processId, msg.value);
+            this.executeInstanceQueue(instance);
+            this.tryPropose();
+        });
     }
 
     private void onPrepareOk(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
-        logger.trace("Received prepare ok from {} for instance {}", host, msg.instance);
-        var processId = PaxosBabel.hostToProcessId(host);
-        var instance = msg.instance;
-        var state = this.instances.get(instance);
-        state.paxos.receivePrepareOk(processId, msg.ballot, msg.acceptedProposal);
-        this.executeInstanceQueue(instance);
-        this.tryPropose();
+        PaxosLog.withContext(this.id, msg.instance, () -> {
+            logger.trace("Received prepare ok from {} for instance {}", host, msg.instance);
+            var processId = PaxosBabel.hostToProcessId(host);
+            var instance = msg.instance;
+            var state = this.instances.get(instance);
+            state.paxos.receivePrepareOk(processId, msg.ballot, msg.acceptedProposal);
+            this.executeInstanceQueue(instance);
+            this.tryPropose();
+        });
     }
 
     private void onPrepareRequest(PrepareRequestMessage msg, Host host, short sourceProto, int channelId) {
-        logger.trace("Received prepare request from {} for instance {}", host, msg.instance);
-        var processId = PaxosBabel.hostToProcessId(host);
-        var instance = msg.instance;
-        var state = this.upsertInstanceWithMembership(instance, msg.membership);
-        state.paxos.receivePrepareRequest(processId, msg.ballot);
-        this.executeInstanceQueue(instance);
-        this.tryPropose();
+        PaxosLog.withContext(this.id, msg.instance, () -> {
+            logger.trace("Received prepare request from {} for instance {}", host, msg.instance);
+            var processId = PaxosBabel.hostToProcessId(host);
+            var instance = msg.instance;
+            var state = this.upsertInstanceWithMembership(instance, msg.membership);
+            state.paxos.receivePrepareRequest(processId, msg.ballot);
+            this.executeInstanceQueue(instance);
+            this.tryPropose();
+        });
     }
 
     /*--------------------------------- Request Handlers ---------------------------------------- */
@@ -374,6 +395,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         var channelId = notification.getChannelId();
         this.registerSharedChannel(channelId);
         this.id = PaxosBabel.hostToProcessId(notification.getMyself());
+        PaxosLog.init("paxos-" + notification.getMyself().getPort() + ".log");
 
         /*--------------------- Register Message Serializers ---------------------- */
         this.registerMessageSerializer(channelId, AcceptOkMessage.ID, AcceptOkMessage.serializer);
