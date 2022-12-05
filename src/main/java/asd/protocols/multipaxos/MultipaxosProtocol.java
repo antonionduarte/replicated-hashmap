@@ -1,29 +1,42 @@
 package asd.protocols.multipaxos;
 
+import java.io.IOException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
-import asd.paxos.multi.Multipaxos;
-import asd.paxos.AgreementCmd;
-import asd.paxos.AgreementCmdQueue;
-import asd.paxos.multi.MultipaxosConfig;
+import asd.paxos.multi.MultiPaxos;
+import asd.paxos.multi.MultiPaxosCmd;
+import asd.paxos.multi.MultiPaxosCmdQueue;
 import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.JoinedNotification;
 import asd.protocols.agreement.requests.AddReplicaRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.agreement.requests.RemoveReplicaRequest;
-import asd.protocols.multipaxos.messages.*;
+import asd.protocols.multipaxos.messages.AcceptOk;
+import asd.protocols.multipaxos.messages.AcceptRequest;
+import asd.protocols.multipaxos.messages.Decided;
+import asd.protocols.multipaxos.messages.PrepareOk;
+import asd.protocols.multipaxos.messages.PrepareRequest;
 import asd.protocols.paxos.PaxosProtocol;
-import asd.protocols.paxos.messages.*;
+import asd.protocols.paxos.messages.AcceptOkMessage;
+import asd.protocols.paxos.messages.AcceptRequestMessage;
+import asd.protocols.paxos.messages.DecidedMessage;
+import asd.protocols.paxos.messages.PrepareOkMessage;
+import asd.protocols.paxos.messages.PrepareRequestMessage;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.network.data.Host;
-
-import java.io.IOException;
-import java.util.*;
 
 public class MultipaxosProtocol extends GenericProtocol {
 	public final static String NAME = "Paxos";
@@ -36,7 +49,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 	private ProcessId leaderId;
 
 	private final ArrayDeque<ProposalValue> proposalQueue;
-	private final AgreementCmdQueue queue;
+	private final MultiPaxosCmdQueue queue;
 
 	/* Multipaxos */
 
@@ -50,7 +63,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	/* Instance tracking */
 
-	private Multipaxos multipaxos;
+	private MultiPaxos multipaxos;
 
 	public MultipaxosProtocol(Properties props) throws HandlerRegistrationException, IOException {
 		super(NAME, Agreement.ID);
@@ -61,7 +74,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 		// Multipaxos
 		this.multipaxos = null;
-		this.queue = new AgreementCmdQueue();
+		this.queue = new MultiPaxosCmdQueue();
 
 		// Membership
 		this.membership = new HashSet<>();
@@ -80,7 +93,9 @@ public class MultipaxosProtocol extends GenericProtocol {
 		/*--------------------- Register Notification Handlers ----------------------------- */
 		this.subscribeNotification(JoinedNotification.ID, this::onJoined);
 		this.subscribeNotification(ChannelReadyNotification.ID, this::onChannelReady);
-		// this.subscribeNotification(UnchangedConfigurationNotification.ID, this::onUnchangedConfiguration); TODO;
+		// this.subscribeNotification(UnchangedConfigurationNotification.ID,
+		//
+		// this::onUnchangedConfiguration); TODO;
 
 	}
 
@@ -105,7 +120,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 		}
 	}
 
-	private void uponDecidedCommand(AgreementCmd cmd) {
+	private void uponDecidedCommand(MultiPaxosCmd cmd) {
 		var decided = cmd.getDecided();
 
 		this.deciding = false;
@@ -113,16 +128,18 @@ public class MultipaxosProtocol extends GenericProtocol {
 		// TODO;
 	}
 
-	private void uponNewLeaderCommand(AgreementCmd cmd) {
+	private void uponNewLeaderCommand(MultiPaxosCmd cmd) {
 		// TODO: Trigger notification indicating that a new leader has been elected
 		this.leaderId = cmd.getNewLeader().processId();
 	}
 
-	private void uponSendPrepareRequestCommand(AgreementCmd cmd) {
+	private void uponSendPrepareRequestCommand(MultiPaxosCmd cmd) {
 		var prepare = cmd.getSendPrepareRequest();
 		// var message = new PrepareRequest(instance, membership, ballot); // TODO;
 
-		// TODO: This should only happen if this Node wants to suggest being the new leader.
+		//
+		// TODO: This should only happen if this Node wants to suggest being the new
+		// leader.
 
 		if (prepare.processId().equals(this.id)) {
 			logger.trace("Sending PrepareRequestMessage to self");
@@ -134,32 +151,28 @@ public class MultipaxosProtocol extends GenericProtocol {
 		}
 	}
 
-	private void uponSendPrepareOkCommand(AgreementCmd cmd) {
+	private void uponSendPrepareOkCommand(MultiPaxosCmd cmd) {
 		var prepareOk = cmd.getSendPrepareOk();
 	}
 
-	private void uponSendAcceptRequestCommand(AgreementCmd cmd) {
+	private void uponSendAcceptRequestCommand(MultiPaxosCmd cmd) {
 		var sendAcceptRequest = cmd.getSendAcceptRequest();
-
-		// only the leader may send accept requests
-		assert leaderId == id;
-
 
 	}
 
-	private void uponSendAcceptOkCommand(AgreementCmd cmd) {
+	private void uponSendAcceptOkCommand(MultiPaxosCmd cmd) {
 		var sendAcceptOk = cmd.getSendAcceptOk();
 	}
 
-	private void uponSendDecidedCommand(AgreementCmd cmd) {
+	private void uponSendDecidedCommand(MultiPaxosCmd cmd) {
 		var sendDecided = cmd.getSendDecided();
 	}
 
-	private void uponSetupTimerCommand(AgreementCmd cmd) {
+	private void uponSetupTimerCommand(MultiPaxosCmd cmd) {
 		var setupTimer = cmd.getSetupTimer();
 	}
 
-	private void uponCancelTimerCommand(AgreementCmd cmd) {
+	private void uponCancelTimerCommand(MultiPaxosCmd cmd) {
 		var cancelTimer = cmd.getCancelTimer();
 	}
 
@@ -185,25 +198,26 @@ public class MultipaxosProtocol extends GenericProtocol {
 	private void onPrepareOk(PrepareOk msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare ok from {}", host);
 		// TODO;
-
 		/*
-			Multipaxos must receive this request
-			Multipaxos must check if the ballot is valid
-			Multipaxos must check if he received a quorum of prepareOk's to determine if he's the new leader
-	    */
+		 * *
+		 * * Multipaxos must receive this request
+		 * * Multipaxos must check if the ballot is valid
+		 * 
+		 * Multipaxos must check if he received a quorum of prepareOk's to determine if
+		 * he's the new leader
+		 */
 	}
 
 	private void onPrepareRequest(PrepareRequest msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare request from {}", host);
-		// TODO;
-
 		/*
-			Multipaxos must receive this request,
-			Multipaxos needs to convert decide if this new node is the leader
-			Multipaxos needs to send a prepareOk to the new leader
-
-			In here, we need to trigger a LeaderElection notification
-	    */
+		 * *
+		 * * Multipaxos must receive this request,
+		 * 
+		 * * Multipaxos needs to send a prepareOk to the new leader
+		 * 
+		 * In here, we need to trigger a LeaderElection notification
+		 */
 	}
 
 	/*--------------------------------- Request Handlers ---------------------------------------- */
@@ -232,13 +246,26 @@ public class MultipaxosProtocol extends GenericProtocol {
 		this.registerSharedChannel(channelId);
 		this.id = PaxosBabel.hostToProcessId(notification.getMyself());
 
-		/*--------------------- Register Message Serializers ---------------------- */
-
-		/* this.registerMessageSerializer(channelId, AcceptOkMessage.ID, AcceptOk.serializer);
-		this.registerMessageSerializer(channelId, AcceptRequestMessage.ID, AcceptRequest.serializer);
-		this.registerMessageSerializer(channelId, DecidedMessage.ID, Decided.serializer);
-		this.registerMessageSerializer(channelId, PrepareOkMessage.ID, PrepareOk.serializer);
-		this.registerMessageSerializer(channelId, PrepareRequestMessage.ID, PrepareRequest.serializer); */
+		/*
+		 * -------------------- Register Message Serializers -----------
+		 * 
+		 * 
+		 * 
+		 * 
+		 * * this.registerMessageSerializer(channelId, AcceptOkMessage.I
+		 * ,
+		 * * AcceptOk.serializer);
+		 * 
+		 * 
+		 * this.registerMessageSerializer(channelId, AcceptRequestMessage.ID,
+		 * AcceptRequest.serializer);
+		 * this.registerMessageSerializer(channelId, DecidedMessage.ID,
+		 * Decided.serializer);
+		 * this.registerMessageSerializer(channelId, PrepareOkMessage.ID,
+		 * PrepareOk.serializer);
+		 * this.registerMessageSerializer(channelId, PrepareRequestMessage.ID,
+		 * PrepareRequest.serializer);
+		 */
 
 		/*--------------------- Register Message Handlers -------------------------- */
 		try {

@@ -2,13 +2,12 @@ package asd.paxos.multi;
 
 import asd.paxos.Ballot;
 import asd.paxos.ProcessId;
-import asd.paxos.Proposal;
 import asd.paxos.ProposalValue;
 
 import java.util.Optional;
 
-public class Multipaxos {
-	private final MultipaxosIO multipaxosIO;
+public class MultiPaxos {
+	private final MultiPaxosIO multipaxosIO;
 
 	private final Proposer proposer;
 	private final Learner learner;
@@ -16,7 +15,7 @@ public class Multipaxos {
 
 	private ProcessId leaderId;
 
-	public Multipaxos(ProcessId id, MultipaxosIO io, MultipaxosConfig config) {
+	public MultiPaxos(ProcessId id, MultiPaxosIO io, MultipaxosConfig config) {
 		this.multipaxosIO = io;
 		this.proposer = new Proposer(multipaxosIO, id, config);
 		this.learner = new Learner(multipaxosIO, id, config);

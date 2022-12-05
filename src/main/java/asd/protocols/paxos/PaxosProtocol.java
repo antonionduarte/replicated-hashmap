@@ -15,8 +15,8 @@ import org.apache.logging.log4j.Logger;
 
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
+import asd.paxos.single.PaxosCmdQueue;
 import asd.paxos.single.Paxos;
-import asd.paxos.AgreementCmdQueue;
 import asd.paxos.PaxosLog;
 import asd.paxos.single.PaxosConfig;
 import asd.protocols.PaxosBabel;
@@ -44,13 +44,13 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         public final Set<ProcessId> membership;
         public final List<ProcessId> membershipList;
         public final Paxos paxos;
-        public final AgreementCmdQueue queue;
+        public final PaxosCmdQueue queue;
         public final HashMap<Integer, Long> timerIdToBabelTimerId;
         public boolean decided;
         public ProposalValue originalProposal;
 
         public InstanceState(ProcessId id, PaxosConfig config, Set<ProcessId> membership) {
-            var queue = new AgreementCmdQueue();
+            var queue = new PaxosCmdQueue();
             config = PaxosConfig.builder(config)
                     .withProposers(List.copyOf(membership))
                     .withAcceptors(List.copyOf(membership))
@@ -75,7 +75,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     /// Instance tracking
     // nextInstance is the first instance that we don't know the decision for.
     private final TreeMap<Integer, InstanceState> instances;
-    private final AgreementCmdQueue executeQueue;
+    private final PaxosCmdQueue executeQueue;
     private int nextInstance;
 
     /// Proposal
@@ -89,7 +89,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
         /// Instance tracking
         this.instances = new TreeMap<>();
-        this.executeQueue = new AgreementCmdQueue();
+        this.executeQueue = new PaxosCmdQueue();
         this.nextInstance = 0;
 
         /// Proposal queue

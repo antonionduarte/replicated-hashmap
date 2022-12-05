@@ -2,9 +2,8 @@ package asd.paxos.multi;
 
 import asd.paxos.Ballot;
 import asd.paxos.ProcessId;
-import asd.paxos.Proposal;
 import asd.paxos.ProposalValue;
-import asd.paxos.AgreementCmd;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,15 +41,15 @@ public class Proposer {
 
 	private static final Logger logger = LogManager.getLogger(asd.paxos.multi.Proposer.class);
 
-	private final MultipaxosIO multipaxosIO;
+	private final MultiPaxosIO io;
 	private final Map<Integer, Slot> slots;
 	private final ProcessId id;
 	private final Duration majorityTimeout;
 	private int currentSlot;
 	private ProcessId leaderId;
 
-	public Proposer(MultipaxosIO multipaxosIO, ProcessId id, MultipaxosConfig config) {
-		this.multipaxosIO = multipaxosIO;
+	public Proposer(MultiPaxosIO multipaxosIO, ProcessId id, MultipaxosConfig config) {
+		this.io = multipaxosIO;
 		this.id = id;
 		this.currentSlot = 0;
 		this.leaderId = null;
@@ -68,7 +67,7 @@ public class Proposer {
 
 		// send prepare to all acceptors
 		this.slots.get(currentSlot).acceptors.forEach(acceptor -> {
-			this.multipaxosIO.push(AgreementCmd.sendPrepareRequest(acceptor, new Ballot(this.id, 0)));
+			this.io.push(MultiPaxosCmd.sendPrepareRequest(acceptor, new Ballot(this.id, 0)));
 		});
 	}
 
@@ -80,8 +79,10 @@ public class Proposer {
 			throw new IllegalStateException("Not in prepare phase");
 
 		// TODO: Detect if leader is behind current slot? I think?
-		// Se o lider tiver recebido uma prepareOk de um acceptor, com um Proposal com optional present, 
-		// tem de aceitar esse proposal, se ainda nao tiver aceite nenhum proposal, ou se proposal tiver um ballot maior
+		// Se o lider tiver recebido uma prepareOk de um acceptor, com um Proposal com
+		// optional present,
+		// tem de aceitar esse proposal, se ainda nao tiver aceite nenhum proposal, ou
+		// se proposal tiver um ballot maior
 	}
 
 	public boolean canPropose() {
@@ -89,7 +90,8 @@ public class Proposer {
 	}
 
 	public void receiveAcceptOk(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
-		var currentSlot = slots.computeIfAbsent(this.currentSlot, (slot) -> new Slot(config.acceptors, config.learners));
+		var currentSlot = slots.computeIfAbsent(this.currentSlot,
+				(slot) -> new Slot(config.acceptors, config.learners));
 
 		if (currentSlot.phase != Phase.ACCEPT) {
 			logger.debug("Ignoring acceptOk from {} because we're in phase {}", processId, currentSlot.phase);
@@ -105,12 +107,12 @@ public class Proposer {
 
 		if (currentSlot.oks.size() == currentSlot.quorumSize) {
 			logger.debug("Got quorum of acceptOks, moving to Decided phase");
-			this.multipaxosIO.push(AgreementCmd.cancelTimer(currentSlot.timerId));
+			this.io.push(MultiPaxosCmd.cancelTimer(currentSlot.timerId));
 			currentSlot.timerId++;
 			currentSlot.phase = Phase.DECIDED;
 
 			currentSlot.learners.forEach(learner -> {
-				this.multipaxosIO.push(AgreementCmd.sendDecided(learner, currentSlot.currentProposal.value));
+				this.io.push(MultiPaxosCmd.sendDecided(learner, currentSlot.currentProposal.value));
 			});
 		}
 	}

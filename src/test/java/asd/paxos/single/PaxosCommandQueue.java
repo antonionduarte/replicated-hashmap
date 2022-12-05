@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 
-import asd.paxos.AgreementCmd;
 import asd.paxos.ProcessId;
 
 public class PaxosCommandQueue {
@@ -19,7 +18,7 @@ public class PaxosCommandQueue {
         }
 
         @Override
-        public void push(AgreementCmd cmd) {
+        public void push(PaxosCmd cmd) {
             this.queue.add(new Message(this.processId, cmd));
         }
 
@@ -51,7 +50,7 @@ public class PaxosCommandQueue {
         var timerId = -1;
         while (!this.queue.isEmpty()) {
             var message = this.queue.remove();
-            if (message.command.getKind() == AgreementCmd.Kind.SetupTimer) {
+            if (message.command.getKind() == PaxosCmd.Kind.SetupTimer) {
                 timerId = message.command.getSetupTimer().timerId();
             }
         }

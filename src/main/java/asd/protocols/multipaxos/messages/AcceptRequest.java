@@ -1,7 +1,7 @@
 package asd.protocols.multipaxos.messages;
 
 import asd.paxos.ProcessId;
-import asd.paxos.Proposal;
+import asd.paxos.multi.Proposal;
 import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 

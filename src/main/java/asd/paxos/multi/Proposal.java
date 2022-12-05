@@ -1,4 +1,7 @@
-package asd.paxos;
+package asd.paxos.multi;
+
+import asd.paxos.Ballot;
+import asd.paxos.ProposalValue;
 
 public class Proposal {
     public final Ballot ballot;

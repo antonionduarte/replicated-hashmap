@@ -5,7 +5,6 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
-import asd.paxos.AgreementCmd;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -69,9 +68,9 @@ class Proposer {
         logger.debug("Proposing value {}", value);
         this.proposalValue = value;
         this.acceptors.forEach(acceptor -> {
-            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentBallot));
+            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentBallot));
         });
-        this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
+        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
     }
 
     public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
@@ -117,7 +116,7 @@ class Proposer {
             this.currentPhase = Phase.ACCEPT;
             this.currentOks.clear();
             this.acceptors.forEach(acceptor -> {
-                this.io.push(AgreementCmd.sendAcceptRequest(acceptor, sentProposal));
+                this.io.push(PaxosCmd.sendAcceptRequest(acceptor, sentProposal));
             });
         }
     }
@@ -147,12 +146,12 @@ class Proposer {
                     "value", this.proposalValue);
 
             logger.debug("Got quorum of acceptOks, moving to Decided phase");
-            this.io.push(AgreementCmd.cancelTimer(this.currentTimerId));
+            this.io.push(PaxosCmd.cancelTimer(this.currentTimerId));
             this.currentTimerId += 1;
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.io.push(AgreementCmd.sendDecided(learner, this.proposalValue));
+                this.io.push(PaxosCmd.sendDecided(learner, this.proposalValue));
             });
         }
     }
@@ -177,9 +176,9 @@ class Proposer {
         this.proposalBallot = new Ballot();
         this.currentOks.clear();
         this.acceptors.forEach(acceptor -> {
-            this.io.push(AgreementCmd.sendPrepareRequest(acceptor, this.currentBallot));
+            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentBallot));
         });
-        this.io.push(AgreementCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
+        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
     }
 
     private Duration getRandomisedMajorityTimeout() {

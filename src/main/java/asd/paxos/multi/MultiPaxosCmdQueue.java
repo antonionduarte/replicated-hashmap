@@ -1,24 +1,22 @@
-package asd.paxos;
-
-import asd.paxos.single.PaxosIO;
+package asd.paxos.multi;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
 
-public class AgreementCmdQueue implements PaxosIO {
+public class MultiPaxosCmdQueue implements MultiPaxosIO {
 
-    private final Queue<AgreementCmd> queue;
+    private final Queue<MultiPaxosCmd> queue;
 
-    public AgreementCmdQueue() {
+    public MultiPaxosCmdQueue() {
         this.queue = new ArrayDeque<>();
     }
 
     @Override
-    public void push(AgreementCmd cmd) {
+    public void push(MultiPaxosCmd cmd) {
         this.queue.add(cmd);
     }
 
-    public AgreementCmd pop() {
+    public MultiPaxosCmd pop() {
         return this.queue.remove();
     }
 
@@ -26,7 +24,7 @@ public class AgreementCmdQueue implements PaxosIO {
         return this.queue.isEmpty();
     }
 
-    public void transferTo(PaxosIO io) {
+    public void transferTo(MultiPaxosIO io) {
         while (!this.isEmpty()) {
             io.push(this.pop());
         }
