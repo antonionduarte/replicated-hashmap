@@ -30,7 +30,7 @@ public class MultiPaxos {
 		this.acceptor.onPrepareRequest(processId, ballot, config);
 	}
 
-	public void receivePrepareOk(ProcessId processId, Ballot ballot, Proposal highestAccept, MultipaxosConfig config) {
+	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept, MultipaxosConfig config) {
 		this.proposer.receivePrepareOk(processId, ballot, highestAccept, config);
 	}
 

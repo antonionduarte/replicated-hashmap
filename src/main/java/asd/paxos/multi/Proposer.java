@@ -27,6 +27,7 @@ public class Proposer {
 		public Set<ProcessId> oks;
 		public Set<ProcessId> prepareOks;
 
+		// TODO: Move this to Multipaxos instead of being in Proposer maybe?
 		public Slot(List<ProcessId> acceptors, List<ProcessId> learners) {
 			this.acceptors = acceptors;
 			this.learners = learners;
@@ -71,22 +72,23 @@ public class Proposer {
 		});
 	}
 
-	public void receivePrepareOk(ProcessId processId, Ballot ballot, Proposal highestAccept, MultipaxosConfig config) {
+	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept, MultipaxosConfig config) {
 		if (this.slots.get(currentSlot).currentProposal == null)
 			throw new IllegalStateException("Don't have a proposal");
 
 		if (this.slots.get(currentSlot).phase != Phase.PREPARE)
 			throw new IllegalStateException("Not in prepare phase");
 
+		if (highestAccept.isPresent()) {
+
+		}
 		// TODO: Detect if leader is behind current slot? I think?
-		// Se o lider tiver recebido uma prepareOk de um acceptor, com um Proposal com
-		// optional present,
-		// tem de aceitar esse proposal, se ainda nao tiver aceite nenhum proposal, ou
-		// se proposal tiver um ballot maior
+		// If the leader received a prepareOk from an acceptor, with a Proposal Optional present (instead of null).
+		// It needs to accept that proposal if he didn't accept that proposal yet, or if the proposal has a higher ballot
 	}
 
 	public boolean canPropose() {
-		return false; // TODO talvez nao seja necessario no multipaxos
+		return false; // TODO: maybe not necessary in multipaxos
 	}
 
 	public void receiveAcceptOk(ProcessId processId, Ballot ballot, MultipaxosConfig config) {

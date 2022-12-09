@@ -26,7 +26,7 @@ public class MultiPaxosCmd {
     public static record SendPrepareOk(
             ProcessId processId,
             Ballot ballot,
-            Optional<asd.paxos.single.Proposal> highestAccept) {
+            Optional<asd.paxos.multi.Proposal> highestAccept) {
     }
 
     // Issued when the proposer wants to send an accept request to an acceptor.
@@ -139,7 +139,7 @@ public class MultiPaxosCmd {
     }
 
     public static MultiPaxosCmd sendPrepareOk(ProcessId processId, Ballot ballot,
-            Optional<asd.paxos.single.Proposal> highestAccept) {
+            Optional<asd.paxos.multi.Proposal> highestAccept) {
         return new MultiPaxosCmd(Kind.SendPrepareOk, new SendPrepareOk(processId, ballot, highestAccept));
     }
 
