@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.*;
 
 import asd.paxos.multi.MultipaxosConfig;
+import asd.protocols.agreement.notifications.DecidedNotification;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -126,9 +127,9 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	private void uponDecidedCommand(MultiPaxosCmd cmd) {
 		var decided = cmd.getDecided();
-		this.deciding = false;
-
-		// TODO;
+		var operation = decided.value().data;
+		// var notification = new DecidedNotification(operation); TODO;
+		// this.triggerNotification(notification);
 	}
 
 	private void uponNewLeaderCommand(MultiPaxosCmd cmd) {
@@ -138,11 +139,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	private void uponSendPrepareRequestCommand(MultiPaxosCmd cmd) {
 		var prepare = cmd.getSendPrepareRequest();
-		// var message = new PrepareRequest(instance, membership, ballot); // TODO;
-
-		//
-		// TODO: This should only happen if this Node wants to suggest being the new
-		// leader.
+		// var message = new PrepareRequestMessage(, prepare.ballot());
 
 		if (prepare.processId().equals(this.id)) {
 			logger.trace("Sending PrepareRequestMessage to self");
@@ -156,6 +153,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	private void uponSendPrepareOkCommand(MultiPaxosCmd cmd) {
 		var prepareOk = cmd.getSendPrepareOk();
+		// var message = new PrepareOk(prepareOk.ballot(), prepareOk.highestAccept(), DECIDED);
 	}
 
 	private void uponSendAcceptRequestCommand(MultiPaxosCmd cmd) {

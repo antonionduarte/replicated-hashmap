@@ -8,22 +8,16 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 public class PrepareOk extends ProtoMessage {
 	public static short ID = Agreement.ID + 5;
 
-	private final int instance;
 	private final Ballot ballot;
 	private final Proposal acceptedProposal;
 	private final boolean decided;
 
-	public PrepareOk(int instance, Ballot ballot, Proposal acceptedProposal, boolean decided) {
+	public PrepareOk(Ballot ballot, Proposal acceptedProposal, boolean decided) {
 		super(ID);
 
-		this.instance = instance;
 		this.ballot = ballot;
 		this.acceptedProposal = acceptedProposal;
 		this.decided = decided;
-	}
-
-	public int getInstance() {
-		return instance;
 	}
 
 	public Ballot getBallot() {
