@@ -3,6 +3,7 @@ package asd.protocols.statemachine;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
+import asd.protocols.agreement.notifications.LeaderChanged;
 import asd.protocols.agreement.requests.AddReplicaRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.agreement.requests.RemoveReplicaRequest;
@@ -10,10 +11,13 @@ import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
 import asd.protocols.app.requests.InstallStateRequest;
+import asd.protocols.statemachine.commands.Batch;
 import asd.protocols.statemachine.commands.BatchBuilder;
+import asd.protocols.statemachine.commands.BatchHash;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;
 import asd.protocols.statemachine.commands.OrderedCommand;
+import asd.protocols.statemachine.messages.OrderBatch;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
@@ -22,6 +26,7 @@ import asd.protocols.statemachine.notifications.UnchangedConfigurationNotificati
 import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
+import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +41,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -55,8 +61,12 @@ import java.util.*;
  */
 public class StateMachine extends GenericProtocol {
 
-	private enum State {
+	private static enum State {
 		JOINING, ACTIVE
+	}
+
+	// A batch sent to the leader, and the time it was sent.
+	private static record SentBatchEntry(Instant instant, Batch batch) {
 	}
 
 	// Protocol information, to register in babel
@@ -75,6 +85,10 @@ public class StateMachine extends GenericProtocol {
 	private final Queue<OrderRequest> pendingRequests;
 	private List<Host> potentialContacts;
 
+	/// Leader tracking
+	private Optional<Host> leader;
+	private final Map<BatchHash, SentBatchEntry> leaderSentBatches;
+
 	/// JoinRequest tracking
 	// Keeps track of any peers that sent us a join request so we can send them a
 	// reply.
@@ -87,6 +101,9 @@ public class StateMachine extends GenericProtocol {
 	private final Duration commandQueueTimeout;
 	private long commandQueueTimer;
 
+	/// Duplicate operation tracking
+	// Keep track of all executed operation UUIDs, for a certain ttl, so we can
+	/// detect duplicates.
 	private final TtlSet<UUID> executedOperations;
 
 	/// Operation batching
@@ -108,6 +125,10 @@ public class StateMachine extends GenericProtocol {
 		this.retriesPerPeer = new HashMap<>();
 		this.pendingRequests = new LinkedList<>();
 
+		// Leader tracking
+		this.leader = Optional.empty();
+		this.leaderSentBatches = new HashMap<>();
+
 		/// Membership tracking
 		/// JoinRequest tracking
 		this.joiningReplicas = new LinkedList<>();
@@ -117,7 +138,6 @@ public class StateMachine extends GenericProtocol {
 		this.commandQueueTimeout = Duration.parse(props.getProperty("statemachine_command_queue_timeout"));
 		this.commandQueueTimer = -1;
 
-		/// Duplicate operation tracking
 		/// Duplicate operation tracking
 		// duplicateOperationTtl is the amount of time that we remember an operation id
 		// after it was executed for the first time.
@@ -146,10 +166,12 @@ public class StateMachine extends GenericProtocol {
 		// registerChannelEventHandler(channelId, ..., this::uponMsgFail);
 
 		/*--------------------- Register Message Serializers ---------------------- */
+		registerMessageSerializer(channelId, OrderBatch.ID, OrderBatch.serializer);
 		registerMessageSerializer(channelId, SystemJoin.ID, SystemJoin.serializer);
 		registerMessageSerializer(channelId, SystemJoinReply.ID, SystemJoinReply.serializer);
 
 		/*--------------------- Register Message Handlers ----------------------------- */
+		registerMessageHandler(channelId, OrderBatch.ID, this::uponOrderBatch);
 		registerMessageHandler(channelId, SystemJoin.ID, this::uponSystemJoin);
 		registerMessageHandler(channelId, SystemJoinReply.ID, this::uponSystemJoinReply);
 
@@ -161,10 +183,12 @@ public class StateMachine extends GenericProtocol {
 
 		/*--------------------- Register Notification Handlers ----------------------------- */
 		subscribeNotification(DecidedNotification.ID, this::uponDecidedNotification);
+		subscribeNotification(LeaderChanged.ID, this::uponLeaderChanged);
 
 		/*--------------------- Register Timer Handlers ----------------------------- */
 		registerTimerHandler(BatchBuildTimer.ID, this::uponBatchBuild);
 		registerTimerHandler(RetryTimer.ID, this::uponRetryTimer);
+		registerTimerHandler(OrderBatchTimer.ID, this::uponOrderBatchTimer);
 	}
 
 	@Override
@@ -222,6 +246,8 @@ public class StateMachine extends GenericProtocol {
 		switch (command.getKind()) {
 			case BATCH -> {
 				var batch = command.getBatch();
+				this.leaderSentBatches.remove(batch.hash);
+				
 				for (var operation : batch.operations) {
 					if (this.executedOperations.contains(operation.operationId)) {
 						logger.warn("Skipping operation {} as it has already been executed", operation.operationId);
@@ -267,11 +293,27 @@ public class StateMachine extends GenericProtocol {
 		}
 	}
 
-	private void buildBatch() {
+	private void sendBatchToLeader(Batch batch) {
+		if (this.leader.isPresent() && !this.isLeader()) {
+			logger.debug("Forwarding batch with size: {}", batch.operations.length);
+			var message = new OrderBatch(batch);
+			var entry = new SentBatchEntry(Instant.now(), batch);
+			this.leaderSentBatches.put(batch.hash, entry);
+			this.sendMessage(message, this.leader.get());
+		} else {
+			logger.debug("Proposing batch with size: {}", batch.operations.length);
+			var request = new ProposeRequest(batch.toBytes());
+			this.sendRequest(request, Agreement.ID);
+		}
+	}
+
+	private void buildAndDispatchBatch() {
 		var batch = this.batchBuilder.build();
-		var request = new ProposeRequest(batch.toBytes());
-		logger.debug("Sending batch with size: {}", batch.operations.length);
-		this.sendRequest(request, Agreement.ID);
+		this.sendBatchToLeader(batch);
+	}
+
+	public boolean isLeader() {
+		return this.leader.isPresent() && this.leader.get().equals(this.self);
 	}
 
 	/*--------------------------------- Requests ---------------------------------------- */
@@ -293,7 +335,7 @@ public class StateMachine extends GenericProtocol {
 				this.batchBuilder.append(operation);
 				if (this.batchBuildTimer == -1) {
 					if (this.batchBuildTimeout.isZero())
-						this.buildBatch();
+						this.buildAndDispatchBatch();
 					else
 						this.batchBuildTimer = this.setupTimer(new BatchBuildTimer(),
 								this.batchBuildTimeout.toMillis());
@@ -329,11 +371,44 @@ public class StateMachine extends GenericProtocol {
 			this.executeOrderedCommand(this.commandQueue.popReadyCommand());
 	}
 
+	private void uponLeaderChanged(LeaderChanged notification, short sourceProto) {
+		this.leader = Optional.of(notification.leader);
+		var batches = this.leaderSentBatches.values().stream().map(SentBatchEntry::batch).toList();
+		this.leaderSentBatches.clear();
+
+		for (var batch : batches)
+			this.sendBatchToLeader(batch);
+
+		for (var data : notification.commands) {
+			var command = Command.fromBytes(data);
+			if (command.getKind() != Command.Kind.BATCH)
+				continue; // TODO: We are dropping every other command, is this ok?
+			this.sendBatchToLeader(command.getBatch());
+		}
+	}
+
 	/*--------------------------------- Messages ---------------------------------------- */
 	private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
 		// If a message fails to be sent, for whatever reason, log the message and the
 		// reason
 		logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
+	}
+
+	private void uponOrderBatch(OrderBatch message, Host sender, short sourceProto, int channelId) {
+		if (this.state != State.ACTIVE) {
+			logger.warn("Received order batch while not active, ignoring");
+			return;
+		}
+		if (!this.membership.contains(sender)) {
+			logger.warn("Received order batch from replica that is not part of the system, ignoring");
+			return;
+		}
+		if (!this.isLeader()) {
+			logger.warn("Received order batch from replica while not being the leader, ignoring");
+			return;
+		}
+		var request = new ProposeRequest(message.batch.toBytes());
+		this.sendRequest(request, Agreement.ID);
 	}
 
 	private void uponSystemJoin(SystemJoin systemJoin, Host sender, short sourceProto, int channelId) {
@@ -438,7 +513,7 @@ public class StateMachine extends GenericProtocol {
 
 	/*--------------------------------- Timers ---------------------------------------- */
 
-	private void uponRetryTimer(RetryTimer timer, long l) {
+	private void uponRetryTimer(RetryTimer timer, long timerId) {
 		logger.warn("Retrying connection to {}", timer.peer);
 		retriesPerPeer.put(timer.peer, retriesPerPeer.get(timer.peer) + 1);
 		openConnection(timer.peer);
@@ -447,7 +522,19 @@ public class StateMachine extends GenericProtocol {
 	private void uponBatchBuild(BatchBuildTimer timer, long timerId) {
 		assert this.batchBuildTimer == timerId;
 		this.batchBuildTimer = -1;
-		this.buildBatch();
+		this.buildAndDispatchBatch();
+	}
+
+	private void uponOrderBatchTimer(OrderBatchTimer timer, long timerId) {
+		assert this.leaderSentBatches.isEmpty() || this.leader.isPresent();
+
+		var deadline = Instant.now().minus(Duration.ofSeconds(5)); // TODO make this configurable
+		for (var entry : this.leaderSentBatches.entrySet()) {
+			var hash = entry.getKey();
+			var sent = entry.getValue();
+			var batch = sent.batch;
+			// TODO: is this even needed?
+		}
 	}
 
 }

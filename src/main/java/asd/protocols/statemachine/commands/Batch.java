@@ -8,10 +8,12 @@ import java.util.UUID;
 public class Batch extends Command {
 
     public final Operation[] operations;
+    public final BatchHash hash;
 
     protected Batch(Operation[] operations) {
         super(Kind.BATCH);
         this.operations = operations;
+        this.hash = new BatchHash(operations);
     }
 
     protected Batch(byte[] bytes) throws IOException {
@@ -29,6 +31,8 @@ public class Batch extends Command {
             dis.read(operationData);
             this.operations[i] = new Operation(uuid, operationData);
         }
+
+        this.hash = new BatchHash(this.operations);
     }
 
     @Override
