@@ -247,16 +247,15 @@ public class StateMachine extends GenericProtocol {
 			case BATCH -> {
 				var batch = command.getBatch();
 				this.leaderSentBatches.remove(batch.hash);
-				
-				for (var operation : batch.operations) {
-					if (this.executedOperations.contains(operation.operationId)) {
-						logger.warn("Skipping operation {} as it has already been executed", operation.operationId);
-						continue;
-					}
 
-					var notification = new ExecuteNotification(operation.operationId, operation.operation);
-					this.executedOperations.set(operation.operationId);
-					this.triggerNotification(notification);
+				for (var operation : batch.operations) {
+					if (!this.executedOperations.contains(operation.operationId)) {
+						var notification = new ExecuteNotification(operation.operationId, operation.operation);
+						this.executedOperations.set(operation.operationId);
+						this.triggerNotification(notification);
+					} else {
+						logger.warn("Skipping operation {} as it has already been executed", operation.operationId);
+					}
 
 					var unchangedNotification = new UnchangedConfigurationNotification(instance);
 					this.triggerNotification(unchangedNotification);
