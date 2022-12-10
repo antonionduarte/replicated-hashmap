@@ -21,7 +21,7 @@ public class Proposer {
 		public int quorumSize;
 		public int timerId;
 
-		public Proposal currentProposal; // may be null
+		public ProposalValue currentProposal; // may be null
 		public Ballot currentBallot;
 		public Phase phase;
 		public Set<ProcessId> oks;
@@ -34,7 +34,7 @@ public class Proposer {
 			this.quorumSize = (this.acceptors.size() / 2) + 1;
 
 			this.currentProposal = null;
-			this.phase = Phase.ACCEPT;
+			this.phase = Phase.PREPARE;
 			this.oks = new HashSet<>();
 			this.timerId = -1;
 		}
@@ -76,7 +76,7 @@ public class Proposer {
 		if (this.slots.get(currentSlot).currentProposal == null)
 			throw new IllegalStateException("Don't have a proposal");
 
-		if (this.slots.get(currentSlot).phase != Phase.PREPARE)
+		if (slot.phase != Phase.PREPARE)
 			throw new IllegalStateException("Not in prepare phase");
 
 		if (highestAccept.isPresent()) {
@@ -100,7 +100,7 @@ public class Proposer {
 			return;
 		}
 
-		if (!ballot.equals(currentSlot.currentProposal.ballot)) {
+		if (!ballot.equals(currentSlot.currentBallot)) {
 			logger.debug("Ignoring acceptOk from {} because it's for a different ballot", processId);
 			return;
 		}
@@ -112,9 +112,8 @@ public class Proposer {
 			this.io.push(MultiPaxosCmd.cancelTimer(currentSlot.timerId));
 			currentSlot.timerId++;
 			currentSlot.phase = Phase.DECIDED;
-
 			currentSlot.learners.forEach(learner -> {
-				this.io.push(MultiPaxosCmd.sendDecided(learner, currentSlot.currentProposal.value));
+				this.io.push(MultiPaxosCmd.sendDecided(learner, currentSlot.currentProposal));
 			});
 		}
 	}

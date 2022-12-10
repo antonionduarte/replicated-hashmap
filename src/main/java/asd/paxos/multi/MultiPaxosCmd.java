@@ -155,6 +155,10 @@ public class MultiPaxosCmd {
         return new MultiPaxosCmd(Kind.SendDecided, new SendDecided(processId, value));
     }
 
+    public static MultiPaxosCmd leaderElected(ProcessId processId) {
+        return new MultiPaxosCmd(Kind.NewLeader, new NewLeader(processId));
+    }
+
     public static MultiPaxosCmd setupTimer(int timerId, Duration timeout) {
         return new MultiPaxosCmd(Kind.SetupTimer, new SetupTimer(timerId, timeout));
     }

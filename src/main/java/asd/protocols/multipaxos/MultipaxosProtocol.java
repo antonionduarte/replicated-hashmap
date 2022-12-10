@@ -1,13 +1,9 @@
 package asd.protocols.multipaxos;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 
+import asd.paxos.multi.MultipaxosConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -55,6 +51,7 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	public final Set<ProcessId> membership;
 	public final List<ProcessId> membershipList;
+	public final MultipaxosConfig multipaxosConfig;
 
 	/* Timeouts */
 
@@ -79,6 +76,13 @@ public class MultipaxosProtocol extends GenericProtocol {
 		// Membership
 		this.membership = new HashSet<>();
 		this.membershipList = new ArrayList<>();
+
+		// Config
+		this.multipaxosConfig = MultipaxosConfig.builder()
+				.withAcceptors(List.copyOf(this.membership))
+				.withLearners(List.copyOf(this.membership))
+				.withProposers(List.copyOf(this.membership))
+				.build();
 
 		// Proposal Queue
 		this.proposalQueue = new ArrayDeque<>();
@@ -122,7 +126,6 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	private void uponDecidedCommand(MultiPaxosCmd cmd) {
 		var decided = cmd.getDecided();
-
 		this.deciding = false;
 
 		// TODO;
@@ -192,32 +195,23 @@ public class MultipaxosProtocol extends GenericProtocol {
 
 	private void onDecided(Decided msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received decided message");
-		// TODO;
+		var processId = PaxosBabel.hostToProcessId(host);
+		// this.multipaxos.receiveDecided(processId, msg.instance(), msg.value()); TODO;
 	}
 
 	private void onPrepareOk(PrepareOk msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare ok from {}", host);
-		// TODO;
-		/*
-		 * *
-		 * * Multipaxos must receive this request
-		 * * Multipaxos must check if the ballot is valid
-		 * 
-		 * Multipaxos must check if he received a quorum of prepareOk's to determine if
-		 * he's the new leader
-		 */
+		var processId = PaxosBabel.hostToProcessId(host);
+		var proposal = Optional.ofNullable(msg.getAcceptedProposal());
+		this.multipaxos.receivePrepareOk(processId, msg.getBallot(), proposal, this.multipaxosConfig);
+		this.executeCommandQueue();
 	}
 
 	private void onPrepareRequest(PrepareRequest msg, Host host, short sourceProto, int channelId) {
 		logger.trace("Received prepare request from {}", host);
-		/*
-		 * *
-		 * * Multipaxos must receive this request,
-		 * 
-		 * * Multipaxos needs to send a prepareOk to the new leader
-		 * 
-		 * In here, we need to trigger a LeaderElection notification
-		 */
+		var processId = PaxosBabel.hostToProcessId(host);
+		this.multipaxos.receivePrepareRequest(processId, msg.getBallot(), this.multipaxosConfig);
+		this.executeCommandQueue();
 	}
 
 	/*--------------------------------- Request Handlers ---------------------------------------- */
