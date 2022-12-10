@@ -72,19 +72,22 @@ public class Proposer {
 		});
 	}
 
-	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept, MultipaxosConfig config) {
+	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept,
+			MultipaxosConfig config) {
 		if (this.slots.get(currentSlot).currentProposal == null)
 			throw new IllegalStateException("Don't have a proposal");
 
-		if (slot.phase != Phase.PREPARE)
-			throw new IllegalStateException("Not in prepare phase");
+		// if (slot.phase != Phase.PREPARE)
+		// throw new IllegalStateException("Not in prepare phase");
 
 		if (highestAccept.isPresent()) {
 
 		}
 		// TODO: Detect if leader is behind current slot? I think?
-		// If the leader received a prepareOk from an acceptor, with a Proposal Optional present (instead of null).
-		// It needs to accept that proposal if he didn't accept that proposal yet, or if the proposal has a higher ballot
+		// If the leader received a prepareOk from an acceptor, with a Proposal Optional
+		// present (instead of null).
+		// It needs to accept that proposal if he didn't accept that proposal yet, or if
+		// the proposal has a higher ballot
 	}
 
 	public boolean canPropose() {
