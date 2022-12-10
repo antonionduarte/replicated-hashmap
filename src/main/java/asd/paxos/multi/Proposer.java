@@ -68,7 +68,7 @@ public class Proposer {
 
 		// send prepare to all acceptors
 		this.slots.get(currentSlot).acceptors.forEach(acceptor -> {
-			this.io.push(MultiPaxosCmd.sendPrepareRequest(acceptor, new Ballot(this.id, 0)));
+			this.io.push(MultiPaxosCmd.sendPrepareRequest(acceptor, new Ballot(this.id, 0), this.currentSlot));
 		});
 	}
 

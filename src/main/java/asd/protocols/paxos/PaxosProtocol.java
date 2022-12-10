@@ -149,8 +149,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                             if (state.originalProposal != null && !decided.value().equals(state.originalProposal))
                                 this.proposalQueue.addFirst(state.originalProposal);
 
-                            var operation = decided.value().data;
-                            var notification = new DecidedNotification(instance, operation);
+                            var command = decided.value().data;
+                            var notification = new DecidedNotification(instance, command);
                             this.triggerNotification(notification);
                             logger.trace("Triggered DecidedNotification for instance {}", instance);
                         }
@@ -279,8 +279,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     /*--------------------------------- Timer Handlers ---------------------------------------- */
 
     private void onPaxosTimer(PaxosTimer timer, long timerId) {
-        PaxosLog.withContext(this.id, timer.instance, () -> {
-            var instance = timer.instance;
+        PaxosLog.withContext(this.id, timer.slot, () -> {
+            var instance = timer.slot;
             var state = instances.get(instance);
             assert state != null;
 
@@ -361,7 +361,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
     private void onProposeRequest(ProposeRequest request, short sourceProto) {
         logger.debug("Received propose request: {}", request);
-        var value = new ProposalValue(request.operation);
+        var value = new ProposalValue(request.command);
         this.proposalQueue.add(value);
         this.tryPropose();
     }

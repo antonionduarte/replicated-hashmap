@@ -8,16 +8,16 @@ public class ProposeRequest extends ProtoRequest {
 
     public static final short ID = PaxosProtocol.ID + 2;
 
-    public final byte[] operation;
+    public final byte[] command;
 
     public ProposeRequest(byte[] operation) {
         super(ID);
 
-        this.operation = operation;
+        this.command = operation;
     }
 
     @Override
     public String toString() {
-        return "ProposeRequest [operation=" + AsdUtils.sha256Hex(this.operation) + "]";
+        return "ProposeRequest [command=" + AsdUtils.sha256Hex(this.command) + "]";
     }
 }

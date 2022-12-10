@@ -26,13 +26,13 @@ public class PaxosCmd {
     public static record SendPrepareOk(
             ProcessId processId,
             Ballot ballot,
-            Optional<asd.paxos.single.Proposal> highestAccept) {
+            Optional<Proposal> highestAccept) {
     }
 
     // Issued when the proposer wants to send an accept request to an acceptor.
     public static record SendAcceptRequest(
             ProcessId processId,
-            asd.paxos.single.Proposal proposal) {
+            Proposal proposal) {
     }
 
     // Issued when the acceptor wants to send an accept-ok message to a proposer.

@@ -19,14 +19,15 @@ public class MultiPaxosCmd {
     // Issued when the proposer wants to send a prepare request to an acceptor.
     public static record SendPrepareRequest(
             ProcessId processId,
-            Ballot ballot) {
+            Ballot ballot,
+            int slot) {
     }
 
     // Issued when the acceptor wants to send a prepare-ok message to a proposer.
     public static record SendPrepareOk(
             ProcessId processId,
             Ballot ballot,
-            Optional<asd.paxos.multi.Proposal> highestAccept) {
+            Optional<Proposal> highestAccept) {
     }
 
     // Issued when the proposer wants to send an accept request to an acceptor.
@@ -38,7 +39,8 @@ public class MultiPaxosCmd {
     // Issued when the acceptor wants to send an accept-ok message to a proposer.
     public static record SendAcceptOk(
             ProcessId processId,
-            Ballot ballot) {
+            Ballot ballot,
+            int slot) {
     }
 
     // Issued when the proposer wants to send a decided message to a learner.
@@ -134,12 +136,11 @@ public class MultiPaxosCmd {
         return new MultiPaxosCmd(Kind.Decided, new Decided(value));
     }
 
-    public static MultiPaxosCmd sendPrepareRequest(ProcessId processId, Ballot ballot) {
-        return new MultiPaxosCmd(Kind.SendPrepareRequest, new SendPrepareRequest(processId, ballot));
+    public static MultiPaxosCmd sendPrepareRequest(ProcessId processId, Ballot ballot, int slot) {
+        return new MultiPaxosCmd(Kind.SendPrepareRequest, new SendPrepareRequest(processId, ballot, slot));
     }
 
-    public static MultiPaxosCmd sendPrepareOk(ProcessId processId, Ballot ballot,
-            Optional<asd.paxos.multi.Proposal> highestAccept) {
+    public static MultiPaxosCmd sendPrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
         return new MultiPaxosCmd(Kind.SendPrepareOk, new SendPrepareOk(processId, ballot, highestAccept));
     }
 
@@ -147,16 +148,12 @@ public class MultiPaxosCmd {
         return new MultiPaxosCmd(Kind.SendAcceptRequest, new SendAcceptRequest(processId, proposal));
     }
 
-    public static MultiPaxosCmd sendAcceptOk(ProcessId processId, Ballot ballot) {
-        return new MultiPaxosCmd(Kind.SendAcceptOk, new SendAcceptOk(processId, ballot));
+    public static MultiPaxosCmd sendAcceptOk(ProcessId processId, Ballot ballot, int slot) {
+        return new MultiPaxosCmd(Kind.SendAcceptOk, new SendAcceptOk(processId, ballot, slot));
     }
 
     public static MultiPaxosCmd sendDecided(ProcessId processId, ProposalValue value) {
         return new MultiPaxosCmd(Kind.SendDecided, new SendDecided(processId, value));
-    }
-
-    public static MultiPaxosCmd leaderElected(ProcessId processId) {
-        return new MultiPaxosCmd(Kind.NewLeader, new NewLeader(processId));
     }
 
     public static MultiPaxosCmd setupTimer(int timerId, Duration timeout) {
