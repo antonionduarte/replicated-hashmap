@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.Optional;
 
 import asd.paxos.Ballot;
-import asd.paxos.single.Proposal;
+import asd.paxos.Proposal;
 import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;

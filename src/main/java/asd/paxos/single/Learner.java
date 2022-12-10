@@ -1,5 +1,7 @@
 package asd.paxos.single;
 
+import asd.paxos.CommandQueue;
+import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosLog;
 
 import org.apache.logging.log4j.LogManager;
@@ -11,14 +13,16 @@ import asd.paxos.ProposalValue;
 class Learner {
     private static final Logger logger = LogManager.getLogger(Learner.class);
 
+    private final int slot;
     private final ProcessId id;
-    private final PaxosIO io;
+    private final CommandQueue queue;
 
     private ProposalValue value;
 
-    public Learner(ProcessId id, PaxosIO io) {
+    public Learner(int slot, ProcessId id, CommandQueue queue) {
+        this.slot = slot;
         this.id = id;
-        this.io = io;
+        this.queue = queue;
 
         this.value = null;
     }
@@ -36,7 +40,7 @@ class Learner {
             PaxosLog.log("learned", "value", value);
             logger.debug("Decided on value {}", value);
             this.value = value;
-            this.io.push(PaxosCmd.decided(value));
+            this.queue.push(PaxosCmd.decide(this.slot, value));
         } else if (!this.value.equals(value)) {
             PaxosLog.log("decision-conflict");
             throw new IllegalStateException("Two different values were decided");

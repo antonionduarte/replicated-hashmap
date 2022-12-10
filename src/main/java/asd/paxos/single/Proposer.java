@@ -9,8 +9,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import asd.paxos.Ballot;
+import asd.paxos.CommandQueue;
+import asd.paxos.PaxosCmd;
+import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
 import asd.paxos.ProposalValue;
 
 class Proposer {
@@ -20,8 +24,9 @@ class Proposer {
         PREPARE, ACCEPT, DECIDED
     }
 
+    private final int slot;
     private final ProcessId id;
-    private final PaxosIO io;
+    private final CommandQueue queue;
     private final Set<ProcessId> acceptors;
     private final Set<ProcessId> learners;
     private final int quorumSize;
@@ -35,11 +40,12 @@ class Proposer {
     private Set<ProcessId> currentOks;
     private int currentTimerId;
 
-    public Proposer(ProcessId id, PaxosIO io, PaxosConfig config) {
+    public Proposer(int slot, ProcessId id, CommandQueue queue, PaxosConfig config) {
+        this.slot = slot;
         this.id = id;
-        this.io = io;
-        this.acceptors = new HashSet<>(config.acceptors);
-        this.learners = new HashSet<>(config.learners);
+        this.queue = queue;
+        this.acceptors = new HashSet<>(config.membership.acceptors);
+        this.learners = new HashSet<>(config.membership.learners);
         this.quorumSize = (this.acceptors.size() / 2) + 1;
         this.majorityTimeout = config.majorityTimeout;
 
@@ -68,9 +74,9 @@ class Proposer {
         logger.debug("Proposing value {}", value);
         this.proposalValue = value;
         this.acceptors.forEach(acceptor -> {
-            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentBallot));
+            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.currentBallot, this.slot));
         });
-        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.majorityTimeout));
+        this.queue.push(PaxosCmd.setupTimer(this.slot, this.currentTimerId, this.majorityTimeout));
     }
 
     public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
@@ -121,7 +127,7 @@ class Proposer {
             this.currentPhase = Phase.ACCEPT;
             this.currentOks.clear();
             this.acceptors.forEach(acceptor -> {
-                this.io.push(PaxosCmd.sendAcceptRequest(acceptor, sentProposal));
+                this.queue.push(PaxosCmd.acceptRequest(acceptor, sentProposal, this.slot));
             });
         }
     }
@@ -156,12 +162,12 @@ class Proposer {
                     "value", this.proposalValue);
 
             logger.debug("Got quorum of acceptOks, moving to Decided phase");
-            this.io.push(PaxosCmd.cancelTimer(this.currentTimerId));
+            this.queue.push(PaxosCmd.cancelTimer(this.slot, this.currentTimerId));
             this.currentTimerId += 1;
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.io.push(PaxosCmd.sendDecided(learner, this.proposalValue));
+                this.queue.push(PaxosCmd.decided(learner, this.proposalValue, this.slot));
             });
         }
     }
@@ -186,9 +192,14 @@ class Proposer {
         this.proposalBallot = new Ballot();
         this.currentOks.clear();
         this.acceptors.forEach(acceptor -> {
-            this.io.push(PaxosCmd.sendPrepareRequest(acceptor, this.currentBallot));
+            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.currentBallot, this.slot));
         });
-        this.io.push(PaxosCmd.setupTimer(this.currentTimerId, this.getRandomisedMajorityTimeout()));
+        this.queue.push(PaxosCmd.setupTimer(this.slot, this.currentTimerId, this.getRandomisedMajorityTimeout()));
+    }
+
+    public void moveToDecided() {
+        this.queue.push(PaxosCmd.cancelTimer(this.slot, this.currentTimerId));
+        this.currentPhase = Phase.DECIDED;
     }
 
     private Duration getRandomisedMajorityTimeout() {

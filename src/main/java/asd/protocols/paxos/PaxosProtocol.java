@@ -1,24 +1,22 @@
 package asd.protocols.paxos;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.TreeMap;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import asd.paxos.ProcessId;
-import asd.paxos.ProposalValue;
-import asd.paxos.single.PaxosCmdQueue;
-import asd.paxos.single.Paxos;
+import asd.paxos.Membership;
+import asd.paxos.Paxos;
+import asd.paxos.PaxosCmd;
+import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
-import asd.paxos.single.PaxosConfig;
+import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
+import asd.paxos.single.SinglePaxos;
 import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
@@ -40,60 +38,22 @@ import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class PaxosProtocol extends GenericProtocol implements Agreement {
-    private static class InstanceState {
-        public final Set<ProcessId> membership;
-        public final List<ProcessId> membershipList;
-        public final Paxos paxos;
-        public final PaxosCmdQueue queue;
-        public final HashMap<Integer, Long> timerIdToBabelTimerId;
-        public boolean decided;
-        public ProposalValue originalProposal;
-
-        public InstanceState(ProcessId id, PaxosConfig config, Set<ProcessId> membership) {
-            var queue = new PaxosCmdQueue();
-            config = PaxosConfig.builder(config)
-                    .withProposers(List.copyOf(membership))
-                    .withAcceptors(List.copyOf(membership))
-                    .withLearners(List.copyOf(membership))
-                    .build();
-            this.membership = Collections.unmodifiableSet(membership);
-            this.membershipList = Collections.unmodifiableList(List.copyOf(membership));
-            this.paxos = new Paxos(id, queue, config);
-            this.queue = queue;
-            this.timerIdToBabelTimerId = new HashMap<>();
-            this.decided = false;
-        }
-    }
-
     private static final Logger logger = LogManager.getLogger(PaxosProtocol.class);
 
     public final static String NAME = "Paxos";
 
     private ProcessId id;
     private boolean joined;
-
-    /// Instance tracking
-    // nextInstance is the first instance that we don't know the decision for.
-    private final TreeMap<Integer, InstanceState> instances;
-    private final PaxosCmdQueue executeQueue;
-    private int nextInstance;
-
-    /// Proposal
-    private final ArrayDeque<ProposalValue> proposalQueue;
+    private Paxos paxos;
+    private final Map<Pair<Integer, Integer>, Long> timers;
 
     public PaxosProtocol(Properties props) throws HandlerRegistrationException {
         super(NAME, ID);
 
         this.id = null;
         this.joined = false;
-
-        /// Instance tracking
-        this.instances = new TreeMap<>();
-        this.executeQueue = new PaxosCmdQueue();
-        this.nextInstance = 0;
-
-        /// Proposal queue
-        this.proposalQueue = new ArrayDeque<>();
+        this.paxos = null;
+        this.timers = new HashMap<>();
 
         /*--------------------- Register Timer Handlers ----------------------------- */
         this.registerTimerHandler(PaxosTimer.ID, this::onPaxosTimer);
@@ -118,180 +78,131 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
     /*--------------------------------- Helpers ---------------------------------------- */
 
-    private InstanceState upsertInstanceWithMembership(int instance, List<ProcessId> membership) {
-        var state = instances.get(instance);
-        if (state == null) {
-            state = new InstanceState(id, new PaxosConfig(), Set.copyOf(membership));
-            instances.put(instance, state);
-        } else if (!membership.stream().allMatch(state.membership::contains)) {
-            throw new IllegalArgumentException("Membership missmatch on instance " + instance);
+    private void execute() {
+        while (!this.paxos.isEmpty()) {
+            var command = this.paxos.pop();
+            this.process(command);
         }
-        return state;
     }
 
-    private void executeInstanceQueue(int instance) {
-        var state = instances.get(instance);
-        assert state != null;
-
-        PaxosLog.withContext(this.id, instance, () -> {
-            logger.debug("Executing instance {} queue", instance);
-            while (!state.queue.isEmpty()) {
-                state.queue.transferTo(this.executeQueue);
-                while (!this.executeQueue.isEmpty()) {
-                    var cmd = this.executeQueue.pop();
-                    switch (cmd.getKind()) {
-                        case Decided -> {
-                            var decided = cmd.getDecided();
-
-                            assert !state.decided;
-                            state.decided = true;
-
-                            if (state.originalProposal != null && !decided.value().equals(state.originalProposal))
-                                this.proposalQueue.addFirst(state.originalProposal);
-
-                            var command = decided.value().data;
-                            var notification = new DecidedNotification(instance, command);
-                            this.triggerNotification(notification);
-                            logger.trace("Triggered DecidedNotification for instance {}", instance);
-                        }
-                        case SendPrepareRequest -> {
-                            var prepare = cmd.getSendPrepareRequest();
-                            var message = new PrepareRequestMessage(
-                                    instance,
-                                    state.membershipList,
-                                    prepare.ballot());
-                            if (prepare.processId().equals(this.id)) {
-                                logger.trace("Sending PrepareRequestMessage to self");
-                                state.paxos.receivePrepareRequest(prepare.processId(), prepare.ballot());
-                            } else {
-                                var host = PaxosBabel.hostFromProcessId(prepare.processId());
-                                logger.trace("Sending PrepareRequestMessage to {}", host);
-                                this.sendMessage(message, host);
-                            }
-                        }
-                        case SendPrepareOk -> {
-                            var prepareOk = cmd.getSendPrepareOk();
-                            var message = new PrepareOkMessage(
-                                    instance,
-                                    prepareOk.ballot(),
-                                    prepareOk.highestAccept(),
-                                    false);
-                            if (prepareOk.processId().equals(this.id)) {
-                                logger.trace("Sending PrepareOkMessage to self");
-                                state.paxos.receivePrepareOk(prepareOk.processId(), prepareOk.ballot(),
-                                        prepareOk.highestAccept());
-                            } else {
-                                var host = PaxosBabel.hostFromProcessId(prepareOk.processId());
-                                logger.trace("Sending PrepareOkMessage to {}", host);
-                                this.sendMessage(message, host);
-                            }
-                        }
-                        case SendAcceptRequest -> {
-                            var accept = cmd.getSendAcceptRequest();
-                            var message = new AcceptRequestMessage(instance, state.membershipList, accept.proposal());
-                            if (accept.processId().equals(this.id)) {
-                                logger.trace("Sending AcceptRequestMessage to self");
-                                state.paxos.receiveAcceptRequest(accept.processId(), accept.proposal());
-                            } else {
-                                var host = PaxosBabel.hostFromProcessId(accept.processId());
-                                logger.trace("Sending AcceptRequestMessage to {}", host);
-                                this.sendMessage(message, host);
-                            }
-                        }
-                        case SendAcceptOk -> {
-                            var acceptOk = cmd.getSendAcceptOk();
-                            var message = new AcceptOkMessage(
-                                    instance,
-                                    acceptOk.ballot());
-                            if (acceptOk.processId().equals(this.id)) {
-                                logger.trace("Sending AcceptOkMessage to self");
-                                state.paxos.receiveAcceptOk(acceptOk.processId(), acceptOk.ballot());
-                            } else {
-                                var host = PaxosBabel.hostFromProcessId(acceptOk.processId());
-                                logger.trace("Sending AcceptOkMessage to {}", host);
-                                this.sendMessage(message, host);
-                            }
-                        }
-                        case SendDecided -> {
-                            var decided = cmd.getSendDecided();
-                            var message = new DecidedMessage(instance, state.membershipList, decided.value());
-                            if (decided.processId().equals(this.id)) {
-                                logger.trace("Sending DecidedMessage to self");
-                                state.paxos.receiveDecided(decided.processId(), decided.value());
-                            } else {
-                                var host = PaxosBabel.hostFromProcessId(decided.processId());
-                                logger.trace("Sending DecidedMessage to {}", host);
-                                this.sendMessage(message, host);
-                            }
-                        }
-                        case SetupTimer -> {
-                            var setup = cmd.getSetupTimer();
-                            var timer = new PaxosTimer(instance, setup.timerId());
-                            var timeout = setup.timeout().toMillis();
-
-                            logger.trace("Setting up timer {} for instance {} with timeout {}ms", setup.timerId(),
-                                    instance,
-                                    timeout);
-                            var babelTimerId = this.setupTimer(timer, timeout);
-                            state.timerIdToBabelTimerId.put(setup.timerId(), babelTimerId);
-                        }
-                        case CancelTimer -> {
-                            var cancel = cmd.getCancelTimer();
-                            var babelTimerId = state.timerIdToBabelTimerId.remove(cancel.timerId());
-                            logger.trace("Cancelling timer {} for instance {}", cancel.timerId(), instance);
-                            if (babelTimerId != null)
-                                this.cancelTimer(babelTimerId);
-                        }
-                        default -> throw new IllegalArgumentException("Unexpected value: " + cmd.getKind());
-                    }
+    private void process(PaxosCmd command) {
+        switch (command.getKind()) {
+            case DECIDE -> {
+                var cmd = command.getDecide();
+                var notification = new DecidedNotification(cmd.slot(), cmd.value().data);
+                this.triggerNotification(notification);
+                logger.trace("Triggered DecidedNotification for instance {}", cmd.slot());
+            }
+            case SETUP_TIMER -> {
+                var cmd = command.getSetupTimer();
+                var timer = new PaxosTimer(cmd.slot(), cmd.timerId());
+                var timeout = cmd.timeout().toMillis();
+                logger.trace("Setting up timer {} for instance {} with timeout {}ms", cmd.timerId(),
+                        cmd.slot(),
+                        timeout);
+                var babelTimerId = this.setupTimer(timer, timeout);
+                var timerPair = Pair.of(cmd.slot(), cmd.timerId());
+                this.timers.put(timerPair, babelTimerId);
+            }
+            case CANCEL_TIMER -> {
+                var cmd = command.getCancelTimer();
+                var timerPair = Pair.of(cmd.slot(), cmd.timerId());
+                var babelTimerId = this.timers.remove(timerPair);
+                if (babelTimerId != null) {
+                    logger.trace("Cancelling timer {} for instance {}", cmd.timerId(), cmd.slot());
+                    this.cancelTimer(babelTimerId);
                 }
             }
-        });
-    }
-
-    private void tryPropose() {
-        while (this.instances.containsKey(this.nextInstance) && this.instances.get(this.nextInstance).decided)
-            this.nextInstance += 1;
-
-        var state = this.instances.get(this.nextInstance);
-        if (state == null) {
-            /*- If the next instance is null that means that we don't know its membership yet.
-            *   We have to wait until we receive a message from another member with the membership
-            *   or the state machine tells us that our previous decision did not change the membership. */
-            PaxosLog.log("waiting-for-membership");
-            return;
-        }
-
-        logger.debug("Trying to propose on instance {} with queue size = {} and canPropose = {}",
-                this.nextInstance, proposalQueue.size(), state.paxos.canPropose());
-
-        PaxosLog.withContext(this.id, this.nextInstance, () -> {
-            if (!this.proposalQueue.isEmpty() && state.paxos.canPropose()) {
-                assert state.originalProposal == null;
-                state.originalProposal = this.proposalQueue.remove();
-                logger.debug("Proposing {} on instance {}", state.originalProposal, this.nextInstance);
-                state.paxos.propose(state.originalProposal);
-                this.executeInstanceQueue(this.nextInstance);
+            case ACCEPT_OK -> {
+                var acceptOk = command.getAcceptOk();
+                var message = new AcceptOkMessage(
+                        acceptOk.slot(),
+                        acceptOk.ballot());
+                if (acceptOk.processId().equals(this.id)) {
+                    logger.trace("Sending AcceptOkMessage to self");
+                    this.paxos.push(command);
+                } else {
+                    var host = PaxosBabel.hostFromProcessId(acceptOk.processId());
+                    logger.trace("Sending AcceptOkMessage to {}", host);
+                    this.sendMessage(message, host);
+                }
             }
-        });
+            case ACCEPT_REQUEST -> {
+                var accept = command.getAcceptRequest();
+                var membership = this.paxos.membership(accept.slot());
+                var message = new AcceptRequestMessage(accept.slot(), membership.acceptors, accept.proposal());
+                if (accept.processId().equals(this.id)) {
+                    logger.trace("Sending AcceptRequestMessage to self");
+                    this.paxos.push(command);
+                } else {
+                    var host = PaxosBabel.hostFromProcessId(accept.processId());
+                    logger.trace("Sending AcceptRequestMessage to {}", host);
+                    this.sendMessage(message, host);
+                }
+            }
+            case DECIDED -> {
+                var decided = command.getDecided();
+                var membership = this.paxos.membership(decided.slot());
+                var message = new DecidedMessage(decided.slot(), membership.acceptors, decided.value());
+                if (decided.processId().equals(this.id)) {
+                    logger.trace("Sending DecidedMessage to self");
+                    this.paxos.push(command);
+                } else {
+                    var host = PaxosBabel.hostFromProcessId(decided.processId());
+                    logger.trace("Sending DecidedMessage to {}", host);
+                    this.sendMessage(message, host);
+                }
+            }
+            case PREPARE_OK -> {
+                var prepareOk = command.getPrepareOk();
+                var message = new PrepareOkMessage(
+                        prepareOk.slot(),
+                        prepareOk.ballot(),
+                        prepareOk.highestAccept(),
+                        false);
+                if (prepareOk.processId().equals(this.id)) {
+                    logger.trace("Sending PrepareOkMessage to self");
+                    this.paxos.push(command);
+                } else {
+                    var host = PaxosBabel.hostFromProcessId(prepareOk.processId());
+                    logger.trace("Sending PrepareOkMessage to {}", host);
+                    this.sendMessage(message, host);
+                }
+            }
+            case PREPARE_REQUEST -> {
+                var prepare = command.getPrepareRequest();
+                var membership = this.paxos.membership(prepare.slot());
+                var message = new PrepareRequestMessage(
+                        prepare.slot(),
+                        membership.acceptors,
+                        prepare.ballot());
+                if (prepare.processId().equals(this.id)) {
+                    logger.trace("Sending PrepareRequestMessage to self");
+                    this.paxos.push(command);
+                } else {
+                    var host = PaxosBabel.hostFromProcessId(prepare.processId());
+                    logger.trace("Sending PrepareRequestMessage to {}", host);
+                    this.sendMessage(message, host);
+                }
+            }
+            case PROPOSE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_DISCOVERED, MEMBERSHIP_UNCHANGED, TIMER_EXPIRED, NEW_LEADER -> {
+                logger.error("Unexpected command {}", command);
+                throw new IllegalStateException("Unexpected command " + command);
+            }
+        }
     }
 
     /*--------------------------------- Timer Handlers ---------------------------------------- */
 
     private void onPaxosTimer(PaxosTimer timer, long timerId) {
         PaxosLog.withContext(this.id, timer.slot, () -> {
-            var instance = timer.slot;
-            var state = instances.get(instance);
-            assert state != null;
-
-            var babelTimerId = state.timerIdToBabelTimerId.remove(timer.timerId);
-            // TODO: This assert is failing sometimes, but I don't know why
-            // assert babelTimerId != null;
-            if (babelTimerId != null) {
-                logger.trace("Triggering timer {} on instance {}", timer.timerId, instance);
-                state.paxos.triggerTimer(timer.timerId);
-                executeInstanceQueue(instance);
+            var timerIdPair = Pair.of(timer.slot, timer.timerId);
+            if (!this.timers.containsKey(timerIdPair)) {
+                logger.trace("Ignoring canceled timer {} for instance {}", timer.timerId, timer.slot);
+                PaxosLog.log("trigger-canceled-timer", "slot", timer.slot);
+                return;
             }
+            this.paxos.push(PaxosCmd.timerExpired(timer.slot, timer.timerId));
         });
     }
 
@@ -302,10 +213,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             logger.trace("Received AcceptOkMessage from {} on instance {}", host, msg.instance);
             var processId = PaxosBabel.hostToProcessId(host);
             var instance = msg.instance;
-            var state = this.instances.get(instance);
-            state.paxos.receiveAcceptOk(processId, msg.ballot);
-            this.executeInstanceQueue(instance);
-            this.tryPropose();
+            this.paxos.push(PaxosCmd.acceptOk(processId, msg.ballot, instance));
+            this.execute();
         });
     }
 
@@ -314,10 +223,11 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             logger.trace("Received accept request from {} for instance {}", host, msg.instance);
             var processId = PaxosBabel.hostToProcessId(host);
             var instance = msg.instance;
-            var state = this.upsertInstanceWithMembership(instance, msg.membership);
-            state.paxos.receiveAcceptRequest(processId, msg.proposal);
-            this.executeInstanceQueue(instance);
-            this.tryPropose();
+            var proposal = new Proposal(msg.proposal.ballot, msg.proposal.value);
+            var membership = new Membership(msg.membership);
+            this.paxos.push(PaxosCmd.membershipDiscovered(instance, membership));
+            this.paxos.push(PaxosCmd.acceptRequest(processId, proposal, instance));
+            this.execute();
         });
     }
 
@@ -326,10 +236,11 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             logger.trace("Received decided message for instance {}", msg.instance);
             var processId = PaxosBabel.hostToProcessId(host);
             var instance = msg.instance;
-            var state = this.upsertInstanceWithMembership(instance, msg.membership);
-            state.paxos.receiveDecided(processId, msg.value);
-            this.executeInstanceQueue(instance);
-            this.tryPropose();
+            var value = msg.value;
+            var membership = new Membership(msg.membership);
+            this.paxos.push(PaxosCmd.membershipDiscovered(instance, membership));
+            this.paxos.push(PaxosCmd.decided(processId, value, instance));
+            this.execute();
         });
     }
 
@@ -338,10 +249,9 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             logger.trace("Received prepare ok from {} for instance {}", host, msg.instance);
             var processId = PaxosBabel.hostToProcessId(host);
             var instance = msg.instance;
-            var state = this.instances.get(instance);
-            state.paxos.receivePrepareOk(processId, msg.ballot, msg.acceptedProposal);
-            this.executeInstanceQueue(instance);
-            this.tryPropose();
+            var proposal = msg.acceptedProposal.map(p -> new Proposal(p.ballot, p.value));
+            this.paxos.push(PaxosCmd.prepareOk(processId, msg.ballot, proposal, instance));
+            this.execute();
         });
     }
 
@@ -350,10 +260,10 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             logger.trace("Received prepare request from {} for instance {}", host, msg.instance);
             var processId = PaxosBabel.hostToProcessId(host);
             var instance = msg.instance;
-            var state = this.upsertInstanceWithMembership(instance, msg.membership);
-            state.paxos.receivePrepareRequest(processId, msg.ballot);
-            this.executeInstanceQueue(instance);
-            this.tryPropose();
+            var membership = new Membership(msg.membership);
+            this.paxos.push(PaxosCmd.membershipDiscovered(instance, membership));
+            this.paxos.push(PaxosCmd.prepareRequest(processId, msg.ballot, instance));
+            this.execute();
         });
     }
 
@@ -361,30 +271,18 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
     private void onProposeRequest(ProposeRequest request, short sourceProto) {
         logger.debug("Received propose request: {}", request);
-        var value = new ProposalValue(request.command);
-        this.proposalQueue.add(value);
-        this.tryPropose();
+        this.paxos.push(PaxosCmd.propose(request.command));
+        this.execute();
     }
 
     private void onAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
-        logger.info("Received add replica request {}", request);
         logger.info("Adding replica to membership: {}", request.replica);
-        var membership = new ArrayList<>(this.instances.get(request.instance).membership);
-        var replicaId = PaxosBabel.hostToProcessId(request.replica);
-        membership.add(replicaId);
-        this.upsertInstanceWithMembership(request.instance + 1, membership);
-        this.tryPropose();
     }
 
     private void onRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
-        logger.info("Received remove replica request {}", request);
         logger.info("Removing replica from membership: {}", request.replica);
-        var replicaId = PaxosBabel.hostToProcessId(request.replica);
-        var membership = this.instances.get(request.instance).membership.stream()
-                .filter(id -> !id.equals(replicaId))
-                .toList();
-        this.upsertInstanceWithMembership(request.instance + 1, membership);
-        this.tryPropose();
+        this.paxos.push(PaxosCmd.memberRemoved(request.instance, PaxosBabel.hostToProcessId(request.replica)));
+        this.execute();
     }
 
     /*--------------------------------- Notification Handlers ---------------------------------------- */
@@ -431,15 +329,18 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         this.joined = true;
 
         var membership = notification.membership.stream().map(PaxosBabel::hostToProcessId).toList();
-        this.nextInstance = notification.joinInstance;
-        this.upsertInstanceWithMembership(notification.joinInstance, membership);
+        var config = PaxosConfig
+                .builder()
+                .withProposers(membership)
+                .withAcceptors(membership)
+                .withLearners(membership)
+                .build();
+        this.paxos = new SinglePaxos(this.id, config);
     }
 
     private void onUnchangedConfiguration(UnchangedConfigurationNotification notification, short sourceProto) {
         assert sourceProto == StateMachine.ID;
-
-        var membership = this.instances.get(notification.instance).membership.stream().toList();
-        this.upsertInstanceWithMembership(notification.instance + 1, membership);
-        this.tryPropose();
+        this.paxos.push(PaxosCmd.membershipUnchanged(notification.instance));
+        this.execute();
     }
 }

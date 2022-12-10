@@ -1,4 +1,4 @@
-package asd.paxos.single2;
+package asd.paxos.single;
 
 import java.util.ArrayDeque;
 import java.util.Optional;
@@ -13,7 +13,6 @@ import asd.paxos.Membership;
 import asd.paxos.Paxos;
 import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
-import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 

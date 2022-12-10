@@ -8,25 +8,32 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import asd.paxos.Ballot;
+import asd.paxos.CommandQueue;
+import asd.paxos.PaxosCmd;
+import asd.paxos.PaxosConfig;
+import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
 
 class Acceptor {
     private static final Logger logger = LogManager.getLogger(Acceptor.class);
 
+    private final int slot;
     private final ProcessId id;
-    private final PaxosIO io;
+    private final CommandQueue queue;
 
     private Ballot promise;
     private Optional<Proposal> accepted;
     private Set<ProcessId> proposers;
 
-    public Acceptor(ProcessId id, PaxosIO io, PaxosConfig config) {
+    public Acceptor(int slot, ProcessId id, CommandQueue queue, PaxosConfig config) {
+        this.slot = slot;
         this.id = id;
-        this.io = io;
+        this.queue = queue;
 
         this.promise = new Ballot();
         this.accepted = Optional.empty();
-        this.proposers = new HashSet<>(config.proposers);
+        this.proposers = new HashSet<>(config.membership.proposers);
     }
 
     public ProcessId getId() {
@@ -44,8 +51,11 @@ class Acceptor {
         }
 
         this.promise = ballot;
-        this.io.push(PaxosCmd.sendPrepareOk(processId, ballot, this.accepted));
+        this.queue.push(PaxosCmd.prepareOk(processId, ballot, this.accepted, this.slot));
         logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
+        PaxosLog.log("send-prepare-ok",
+                "proposer", processId,
+                "ballot", ballot);
     }
 
     public void onAcceptRequest(ProcessId processId, Proposal proposal) {
@@ -60,8 +70,11 @@ class Acceptor {
 
         this.promise = proposal.ballot;
         this.accepted = Optional.of(proposal);
-        this.io.push(PaxosCmd.sendAcceptOk(processId, promise));
+        this.queue.push(PaxosCmd.acceptOk(processId, promise, this.slot));
         logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
+        PaxosLog.log("send-accept-ok",
+                "proposer", processId,
+                "ballot", proposal.ballot);
     }
 
 }

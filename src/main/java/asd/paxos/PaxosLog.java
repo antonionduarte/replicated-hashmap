@@ -6,7 +6,6 @@ import java.util.Stack;
 
 import org.apache.commons.codec.binary.Hex;
 
-import asd.paxos.single.Proposal;
 import asd.protocols.PaxosBabel;
 
 public class PaxosLog {

@@ -13,7 +13,7 @@ import com.google.common.primitives.Longs;
 import asd.paxos.Ballot;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
-import asd.paxos.single.Proposal;
+import asd.paxos.Proposal;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.network.ISerializer;
 import pt.unl.fct.di.novasys.network.data.Host;
