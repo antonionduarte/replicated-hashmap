@@ -22,7 +22,8 @@ public class Configurations {
     }
 
     public boolean contains(int slot) {
-        return this.configurations.floorKey(slot) != null;
+        // return this.configurations.floorKey(slot) != null; ???
+        return this.configurations.containsKey(slot);
     }
 
     public int size() {

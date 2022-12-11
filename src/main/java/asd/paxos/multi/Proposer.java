@@ -38,6 +38,7 @@ public class Proposer {
     private Set<ProcessId> curracceptors;
     private Set<ProcessId> curroks;
     private int currtimer;
+    private boolean hasLead;
 
     public Proposer(ProcessId processId, CommandQueue queue, PaxosConfig config, Configurations configurations) {
         this.id = processId;
@@ -53,6 +54,7 @@ public class Proposer {
         this.curracceptors = Set.copyOf(config.membership.acceptors);
         this.curroks = new HashSet<>();
         this.currtimer = 0;
+        this.hasLead = false;
     }
 
     public boolean canPropose() {
@@ -63,26 +65,36 @@ public class Proposer {
         assert this.canPropose();
 
         this.state = State.WAITING_PREPARE_OK;
+        this.proposalBallot = new Ballot();
+        this.proposal = value;
         this.curracceptors = Set.copyOf(this.configurations.get(this.currslot).acceptors);
         this.curroks.clear();
+        logger.debug("Acceptors for slot {}: {}", this.currslot, this.curracceptors);
 
-        this.curracceptors.forEach(acceptor -> {
-            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
-        });
+        if (!this.hasLead) {
+            this.curracceptors.forEach(acceptor -> {
+                this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
+            });
+        } else {
+            this.curracceptors.forEach(acceptor -> {
+                this.queue.push(PaxosCmd.acceptRequest(acceptor, new Proposal(this.proposalBallot, this.proposal),
+                        this.currslot));
+            });
+        }
         this.setupTimer(this.getRandomisedMajorityTimeout());
     }
 
     public void onPrepareOk(int slot, ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
-        if (!this.curracceptors.contains(processId)) {
-            logger.warn("Received prepare-ok from non-acceptor {}", processId);
+        if (this.currslot != slot) {
+            logger.debug("Received prepare-ok for slot {} in state {}", slot, this.state);
             return;
         }
         if (this.state != State.WAITING_PREPARE_OK) {
-            logger.warn("Received prepare-ok in state {}", this.state);
+            logger.debug("Received prepare-ok in state {}", this.state);
             return;
         }
-        if (this.currslot != slot) {
-            logger.warn("Received prepare-ok for slot {} in state {}", slot, this.state);
+        if (!this.curracceptors.contains(processId)) {
+            logger.debug("Received prepare-ok from non-acceptor {}", processId);
             return;
         }
 
@@ -99,6 +111,7 @@ public class Proposer {
                         "new", accept);
                 this.proposal = accept.value;
                 this.proposalBallot = accept.ballot;
+                this.hasLead = true;
                 logger.debug("Updated proposal to {}", accept);
             }
         }
@@ -116,16 +129,16 @@ public class Proposer {
     }
 
     public void onAcceptOk(int slot, ProcessId processId, Ballot ballot) {
-        if (!this.curracceptors.contains(processId)) {
-            logger.warn("Received accept-ok from non-acceptor {}", processId);
+        if (this.currslot != slot || !this.ballot.equals(ballot)) {
+            logger.debug("Received accept-ok for slot {} in state {}", slot, this.state);
             return;
         }
         if (this.state != State.WAITING_PROPOSE_OK) {
-            logger.warn("Received accept-ok in state {}", this.state);
+            logger.debug("Received accept-ok in state {}", this.state);
             return;
         }
-        if (this.currslot != slot || !this.ballot.equals(ballot)) {
-            logger.warn("Received accept-ok for slot {} in state {}", slot, this.state);
+        if (!this.curracceptors.contains(processId)) {
+            logger.debug("Received accept-ok from non-acceptor {}", processId);
             return;
         }
 
@@ -141,7 +154,7 @@ public class Proposer {
             this.proposalBallot = new Ballot();
             this.currslot += 1;
             this.proposal = null;
-            this.curracceptors = null;
+            this.curracceptors = Set.of();
             this.curroks.clear();
         }
     }
@@ -156,6 +169,7 @@ public class Proposer {
         this.state = State.WAITING_PREPARE_OK;
         this.ballot = this.ballot.withIncSeqNumber();
         this.proposalBallot = new Ballot();
+        this.hasLead = false;
         this.curracceptors.forEach(acceptor -> {
             this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
         });
@@ -165,9 +179,10 @@ public class Proposer {
     public Optional<ProposalValue> preempt() {
         var prop = Optional.ofNullable(this.proposal);
         this.proposal = null;
-        this.curracceptors = null;
+        this.curracceptors = Set.of();
         this.state = State.WAITING_PROPOSAL;
         this.proposalBallot = new Ballot();
+        this.hasLead = false;
         this.cancelTimer();
         return prop;
     }

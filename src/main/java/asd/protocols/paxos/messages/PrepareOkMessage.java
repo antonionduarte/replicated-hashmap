@@ -45,7 +45,7 @@ public class PrepareOkMessage extends ProtoMessage {
             PaxosBabel.ballotSerializer.serialize(msg.ballot, buf);
             buf.writeBoolean(msg.acceptedProposal.isPresent());
             if (msg.acceptedProposal.isPresent()) {
-                PaxosBabel.singleProposalSerializer.serialize(msg.acceptedProposal.get(), buf);
+                PaxosBabel.proposalSerializer.serialize(msg.acceptedProposal.get(), buf);
             }
             buf.writeBoolean(msg.decided);
         }
@@ -56,7 +56,7 @@ public class PrepareOkMessage extends ProtoMessage {
             Ballot ballot = PaxosBabel.ballotSerializer.deserialize(buf);
             Optional<Proposal> acceptedProposal = Optional.empty();
             if (buf.readBoolean()) {
-                acceptedProposal = Optional.of(PaxosBabel.singleProposalSerializer.deserialize(buf));
+                acceptedProposal = Optional.of(PaxosBabel.proposalSerializer.deserialize(buf));
             }
             boolean decided = buf.readBoolean();
             return new PrepareOkMessage(instance, ballot, acceptedProposal, decided);

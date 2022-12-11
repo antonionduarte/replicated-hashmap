@@ -5,6 +5,9 @@ public class Proposal {
     public final ProposalValue value;
 
     public Proposal(Ballot ballot, ProposalValue value) {
+        assert ballot != null;
+        assert value != null;
+
         this.ballot = ballot;
         this.value = value;
     }

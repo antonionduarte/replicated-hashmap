@@ -21,6 +21,8 @@ public class AcceptRequestMessage extends ProtoMessage {
 
     public AcceptRequestMessage(int instance, List<ProcessId> membership, Proposal proposal) {
         super(ID);
+        assert membership != null;
+        assert proposal != null;
 
         this.instance = instance;
         this.membership = membership;
@@ -34,7 +36,7 @@ public class AcceptRequestMessage extends ProtoMessage {
             out.writeInt(acceptRequestMessage.membership.size());
             for (var p : acceptRequestMessage.membership)
                 PaxosBabel.processIdSerializer.serialize(p, out);
-            PaxosBabel.singleProposalSerializer.serialize(acceptRequestMessage.proposal, out);
+            PaxosBabel.proposalSerializer.serialize(acceptRequestMessage.proposal, out);
         }
 
         @Override
@@ -44,7 +46,7 @@ public class AcceptRequestMessage extends ProtoMessage {
             List<ProcessId> membership = new ArrayList<>(membershipSize);
             for (int i = 0; i < membershipSize; i++)
                 membership.add(PaxosBabel.processIdSerializer.deserialize(in));
-            var proposal = PaxosBabel.singleProposalSerializer.deserialize(in);
+            var proposal = PaxosBabel.proposalSerializer.deserialize(in);
             return new AcceptRequestMessage(instance, membership, proposal);
         }
     };

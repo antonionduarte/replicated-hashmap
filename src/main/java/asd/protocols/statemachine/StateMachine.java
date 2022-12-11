@@ -371,12 +371,17 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void uponLeaderChanged(LeaderChanged notification, short sourceProto) {
-		this.leader = Optional.of(notification.leader);
-		var batches = this.leaderSentBatches.values().stream().map(SentBatchEntry::batch).toList();
-		this.leaderSentBatches.clear();
+		logger.debug("Received leader changed notification: {}", notification);
+		if (!this.leader.isPresent() || !this.leader.get().equals(notification.leader)) {
+			// If we are changing to a different leader
+			
+			this.leader = Optional.of(notification.leader);
+			var batches = this.leaderSentBatches.values().stream().map(SentBatchEntry::batch).toList();
+			this.leaderSentBatches.clear();
 
-		for (var batch : batches)
-			this.sendBatchToLeader(batch);
+			for (var batch : batches)
+				this.sendBatchToLeader(batch);
+		}
 
 		for (var data : notification.commands) {
 			var command = Command.fromBytes(data);

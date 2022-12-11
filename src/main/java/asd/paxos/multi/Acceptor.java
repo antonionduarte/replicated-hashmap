@@ -43,7 +43,7 @@ public class Acceptor {
             logger.debug("Ignoring prepare request from unknown proposer {}", processId);
             return;
         }
-        if (ballot.compare(this.promise) != Ballot.Order.GREATER) {
+        if (ballot.compare(this.promise) == Ballot.Order.LESS) {
             logger.debug("Ignoring prepare request from {} with ballot {}", processId, ballot);
             return;
         }

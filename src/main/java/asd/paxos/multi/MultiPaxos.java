@@ -2,6 +2,9 @@ package asd.paxos.multi;
 
 import java.util.ArrayDeque;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import asd.paxos.CommandQueue;
 import asd.paxos.Configurations;
 import asd.paxos.Membership;
@@ -10,8 +13,10 @@ import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
+import asd.protocols.PaxosBabel;
 
 public class MultiPaxos implements Paxos {
+    private static final Logger logger = LogManager.getLogger(MultiPaxos.class);
 
     private final ProcessId id;
     private final PaxosConfig config;
@@ -37,6 +42,8 @@ public class MultiPaxos implements Paxos {
         this.proposer = new Proposer(processId, this.preprocess, config, this.configurations);
         this.acceptor = new Acceptor(processId, this.preprocess, config);
         this.learner = new Learner(processId, this.preprocess);
+
+        this.configurations.set(config.initialSlot, config.membership);
     }
 
     @Override
@@ -88,6 +95,9 @@ public class MultiPaxos implements Paxos {
                     return;
 
                 this.learner.onDecide(command.slot(), command.value());
+                var proposal = this.proposer.preempt();
+                if (proposal.isPresent() && !proposal.get().equals(command.value()))
+                    this.proposalQueue.addFirst(proposal.get());
             }
             case PREPARE_OK -> {
                 var command = cmd.getPrepareOk();
@@ -159,11 +169,13 @@ public class MultiPaxos implements Paxos {
                 }
                 case NEW_LEADER -> {
                     var cmd = command.getNewLeader();
-                    var val = this.proposer.preempt();
-                    if (val.isPresent())
-                        cmd.commands().add(val.get().data);
-                    while (!this.proposalQueue.isEmpty())
-                        cmd.commands().add(this.proposalQueue.pop().data);
+                    if (!cmd.leader().equals(this.id)) {
+                        var val = this.proposer.preempt();
+                        if (val.isPresent())
+                            cmd.commands().add(val.get().data);
+                        while (!this.proposalQueue.isEmpty())
+                            cmd.commands().add(this.proposalQueue.pop().data);
+                    }
                     this.output.push(command);
                 }
                 case PREPARE_OK -> {

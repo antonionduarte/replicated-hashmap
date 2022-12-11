@@ -16,6 +16,7 @@ import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
+import asd.paxos.multi.MultiPaxos;
 import asd.paxos.single.SinglePaxos;
 import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
@@ -342,7 +343,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                 .withAcceptors(membership)
                 .withLearners(membership)
                 .build();
-        this.paxos = new SinglePaxos(this.id, config);
+        this.paxos = new MultiPaxos(this.id, config);
     }
 
     private void onUnchangedConfiguration(UnchangedConfigurationNotification notification, short sourceProto) {
