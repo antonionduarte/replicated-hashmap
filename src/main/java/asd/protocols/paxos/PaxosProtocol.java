@@ -21,6 +21,7 @@ import asd.protocols.PaxosBabel;
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
+import asd.protocols.agreement.notifications.LeaderChanged;
 import asd.protocols.agreement.requests.AddReplicaRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.agreement.requests.RemoveReplicaRequest;
@@ -140,8 +141,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                     this.sendMessage(message, host);
                 }
             }
-            case DECIDED -> {
-                var decided = command.getDecided();
+            case LEARN -> {
+                var decided = command.getLearn();
                 var membership = this.paxos.membership(decided.slot());
                 var message = new DecidedMessage(decided.slot(), membership.acceptors, decided.value());
                 if (decided.processId().equals(this.id)) {
@@ -185,7 +186,13 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                     this.sendMessage(message, host);
                 }
             }
-            case PROPOSE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_DISCOVERED, MEMBERSHIP_UNCHANGED, TIMER_EXPIRED, NEW_LEADER -> {
+            case NEW_LEADER -> {
+                var newLeader = command.getNewLeader();
+                var host = PaxosBabel.hostFromProcessId(newLeader.leader());
+                var notification = new LeaderChanged(host, newLeader.commands());
+                this.triggerNotification(notification);
+            }
+            case PROPOSE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_DISCOVERED, MEMBERSHIP_UNCHANGED, TIMER_EXPIRED -> {
                 logger.error("Unexpected command {}", command);
                 throw new IllegalStateException("Unexpected command " + command);
             }
@@ -239,7 +246,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
             var value = msg.value;
             var membership = new Membership(msg.membership);
             this.paxos.push(PaxosCmd.membershipDiscovered(instance, membership));
-            this.paxos.push(PaxosCmd.decided(processId, value, instance));
+            this.paxos.push(PaxosCmd.learn(processId, value, instance));
             this.execute();
         });
     }

@@ -1,50 +1,79 @@
 package asd.paxos.multi;
 
-import asd.paxos.Ballot;
-import asd.paxos.ProcessId;
+import java.util.ArrayList;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
-import java.util.Map;
+import asd.paxos.Ballot;
+import asd.paxos.CommandQueue;
+import asd.paxos.PaxosCmd;
+import asd.paxos.PaxosConfig;
+import asd.paxos.PaxosLog;
+import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
 
 public class Acceptor {
-	private static final Logger logger = LogManager.getLogger(asd.paxos.multi.Acceptor.class);
+    private static final Logger logger = LogManager.getLogger(Acceptor.class);
 
-	private final MultiPaxosIO io;
-	private final ProcessId id;
+    private final ProcessId id;
+    private final CommandQueue queue;
 
-	private final Map<Integer, Proposal> accepted; // slot -> proposal
-	private Ballot promise;
+    private Ballot promise;
+    private TreeMap<Integer, Proposal> accepted;
+    private Set<ProcessId> proposers;
 
-	public Acceptor(MultiPaxosIO io, ProcessId id, MultipaxosConfig config) {
-		this.io = io;
-		this.id = id;
+    public Acceptor(ProcessId id, CommandQueue queue, PaxosConfig config) {
+        this.id = id;
+        this.queue = queue;
+        this.promise = new Ballot();
+        this.accepted = new TreeMap<>();
+        this.proposers = Set.copyOf(config.membership.proposers);
+    }
 
-		this.accepted = new HashMap<>();
-		this.promise = new Ballot();
-	}
+    public ProcessId getId() {
+        return id;
+    }
 
-	public void onPrepareRequest(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
+    public void onPrepareRequest(int slot, ProcessId processId, Ballot ballot) {
+        if (!proposers.contains(processId)) {
+            logger.debug("Ignoring prepare request from unknown proposer {}", processId);
+            return;
+        }
+        if (ballot.compare(this.promise) != Ballot.Order.GREATER) {
+            logger.debug("Ignoring prepare request from {} with ballot {}", processId, ballot);
+            return;
+        }
 
-	}
+        var proposal = Optional.ofNullable(this.accepted.get(slot));
+        this.promise = ballot;
+        this.queue.push(PaxosCmd.newLeader(processId, new ArrayList<>()));
+        this.queue.push(PaxosCmd.prepareOk(processId, ballot, proposal, slot));
+        logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
+        PaxosLog.log("send-prepare-ok",
+                "proposer", processId,
+                "ballot", ballot);
+    }
 
-	public void onAcceptRequest(ProcessId processId, Proposal proposal) {
-		var slot = proposal.slot;
-		var ballot = proposal.ballot;
+    public void onAcceptRequest(int slot, ProcessId processId, Proposal proposal) {
+        if (!proposers.contains(processId)) {
+            logger.debug("Ignoring accept request from unknown proposer {}", processId);
+            return;
+        }
+        if (proposal.ballot.compare(this.promise) == Ballot.Order.LESS) {
+            logger.debug("Ignoring accept request from {} with proposal {}", processId, proposal);
+            return;
+        }
 
-		var currentPromise = this.promise;
-
-		if (ballot.compare(currentPromise) != Ballot.Order.LESS) {
-			logger.debug("Ignoring accept request from {} with proposal {}", processId, proposal);
-			return;
-		}
-
-		promise = ballot;
-		this.accepted.put(slot, proposal);
-		this.io.push(MultiPaxosCmd.sendAcceptOk(processId, proposal.ballot, proposal.slot));
-
-		logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
-	}
+        this.promise = proposal.ballot;
+        this.accepted.put(slot, proposal);
+        this.queue.push(PaxosCmd.acceptOk(processId, promise, slot));
+        logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
+        PaxosLog.log("send-accept-ok",
+                "proposer", processId,
+                "ballot", proposal.ballot);
+    }
 }

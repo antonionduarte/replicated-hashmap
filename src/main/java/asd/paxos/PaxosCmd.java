@@ -6,7 +6,7 @@ import java.util.Optional;
 
 public class PaxosCmd {
     public static enum Kind {
-        NEW_LEADER, DECIDE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_UNCHANGED, MEMBERSHIP_DISCOVERED, PROPOSE, PREPARE_REQUEST, PREPARE_OK, ACCEPT_REQUEST, ACCEPT_OK, DECIDED, SETUP_TIMER, CANCEL_TIMER, TIMER_EXPIRED,
+        NEW_LEADER, DECIDE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_UNCHANGED, MEMBERSHIP_DISCOVERED, PROPOSE, PREPARE_REQUEST, PREPARE_OK, ACCEPT_REQUEST, ACCEPT_OK, LEARN, SETUP_TIMER, CANCEL_TIMER, TIMER_EXPIRED,
     }
 
     public static record Decide(int slot, ProposalValue value) {
@@ -55,7 +55,7 @@ public class PaxosCmd {
             int slot) {
     }
 
-    public static record Decided(
+    public static record Learn(
             ProcessId processId,
             ProposalValue value,
             int slot) {
@@ -133,8 +133,8 @@ public class PaxosCmd {
         return (AcceptRequest) payload;
     }
 
-    public Decided getDecided() {
-        return (Decided) payload;
+    public Learn getLearn() {
+        return (Learn) payload;
     }
 
     public SetupTimer getSetupTimer() {
@@ -197,8 +197,8 @@ public class PaxosCmd {
         return new PaxosCmd(Kind.ACCEPT_OK, new AcceptOk(processId, ballot, slot));
     }
 
-    public static PaxosCmd decided(ProcessId processId, ProposalValue value, int slot) {
-        return new PaxosCmd(Kind.DECIDED, new Decided(processId, value, slot));
+    public static PaxosCmd learn(ProcessId processId, ProposalValue value, int slot) {
+        return new PaxosCmd(Kind.LEARN, new Learn(processId, value, slot));
     }
 
     public static PaxosCmd setupTimer(int slot, int timerId, Duration timeout) {

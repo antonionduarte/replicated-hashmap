@@ -167,7 +167,7 @@ class Proposer {
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.queue.push(PaxosCmd.decided(learner, this.proposalValue, this.slot));
+                this.queue.push(PaxosCmd.learn(learner, this.proposalValue, this.slot));
             });
         }
     }

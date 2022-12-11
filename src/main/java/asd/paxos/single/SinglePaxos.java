@@ -89,8 +89,8 @@ public class SinglePaxos implements Paxos {
                 state.acceptor.onAcceptRequest(command.processId(), command.proposal());
             }
             case CANCEL_TIMER -> throw new IllegalArgumentException("Unexpected CANCEL_TIMER");
-            case DECIDED -> {
-                var command = cmd.getDecided();
+            case LEARN -> {
+                var command = cmd.getLearn();
                 var state = this.tryGetSlot(command.slot());
 
                 if (state.isDecided())

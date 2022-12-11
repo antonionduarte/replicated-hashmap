@@ -1,123 +1,192 @@
 package asd.paxos.multi;
 
-import asd.paxos.Ballot;
-import asd.paxos.ProcessId;
-import asd.paxos.ProposalValue;
+import java.time.Duration;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.time.Duration;
-import java.util.*;
+import asd.paxos.Ballot;
+import asd.paxos.CommandQueue;
+import asd.paxos.Configurations;
+import asd.paxos.PaxosCmd;
+import asd.paxos.PaxosConfig;
+import asd.paxos.PaxosLog;
+import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
+import asd.paxos.ProposalValue;
 
 public class Proposer {
-	private static enum Phase {
-		PREPARE, ACCEPT, DECIDED
-	}
+    private static enum State {
+        WAITING_PROPOSAL, WAITING_PREPARE_OK, WAITING_PROPOSE_OK,
+    }
 
-	public static class Slot {
-		public List<ProcessId> acceptors;
-		public List<ProcessId> learners;
-		public int quorumSize;
-		public int timerId;
+    private static final Logger logger = LogManager.getLogger(Proposer.class);
 
-		public ProposalValue currentProposal; // may be null
-		public Ballot currentBallot;
-		public Phase phase;
-		public Set<ProcessId> oks;
-		public Set<ProcessId> prepareOks;
+    private final ProcessId id;
+    private final CommandQueue queue;
+    private final Configurations configurations;
+    private final Duration majorityTimeout;
 
-		// TODO: Move this to Multipaxos instead of being in Proposer maybe?
-		public Slot(List<ProcessId> acceptors, List<ProcessId> learners) {
-			this.acceptors = acceptors;
-			this.learners = learners;
-			this.quorumSize = (this.acceptors.size() / 2) + 1;
+    private State state;
+    private Ballot ballot;
+    private Ballot proposalBallot;
+    private ProposalValue proposal;
+    private int currslot;
+    private Set<ProcessId> curracceptors;
+    private Set<ProcessId> curroks;
+    private int currtimer;
 
-			this.currentProposal = null;
-			this.phase = Phase.PREPARE;
-			this.oks = new HashSet<>();
-			this.timerId = -1;
-		}
-	}
+    public Proposer(ProcessId processId, CommandQueue queue, PaxosConfig config, Configurations configurations) {
+        this.id = processId;
+        this.queue = queue;
+        this.configurations = configurations;
+        this.majorityTimeout = config.majorityTimeout;
 
-	private static final Logger logger = LogManager.getLogger(asd.paxos.multi.Proposer.class);
+        this.state = State.WAITING_PROPOSAL;
+        this.ballot = new Ballot(this.id, 0);
+        this.proposalBallot = new Ballot();
+        this.proposal = null;
+        this.currslot = config.initialSlot;
+        this.curracceptors = Set.copyOf(config.membership.acceptors);
+        this.curroks = new HashSet<>();
+        this.currtimer = 0;
+    }
 
-	private final MultiPaxosIO io;
-	private final Map<Integer, Slot> slots;
-	private final ProcessId id;
-	private final Duration majorityTimeout;
-	private int currentSlot;
-	private ProcessId leaderId;
+    public boolean canPropose() {
+        return this.state == State.WAITING_PROPOSAL && this.configurations.contains(this.currslot);
+    }
 
-	public Proposer(MultiPaxosIO multipaxosIO, ProcessId id, MultipaxosConfig config) {
-		this.io = multipaxosIO;
-		this.id = id;
-		this.currentSlot = 0;
-		this.leaderId = null;
-		this.slots = new HashMap<>();
-		this.majorityTimeout = config.majorityTimeout;
-	}
+    public void propose(ProposalValue value) {
+        assert this.canPropose();
 
-	// try to become le leader
-	public void propose(ProposalValue value, MultipaxosConfig config) {
-		assert this.leaderId != id; // we must not already be the leader, i think
+        this.state = State.WAITING_PREPARE_OK;
+        this.curracceptors = Set.copyOf(this.configurations.get(this.currslot).acceptors);
+        this.curroks.clear();
 
-		this.currentSlot++;
-		this.slots.put(this.currentSlot, new Slot(config.acceptors, config.learners));
-		this.slots.get(this.currentSlot).phase = Phase.PREPARE;
+        this.curracceptors.forEach(acceptor -> {
+            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
+        });
+        this.setupTimer(this.getRandomisedMajorityTimeout());
+    }
 
-		// send prepare to all acceptors
-		this.slots.get(currentSlot).acceptors.forEach(acceptor -> {
-			this.io.push(MultiPaxosCmd.sendPrepareRequest(acceptor, new Ballot(this.id, 0), this.currentSlot));
-		});
-	}
+    public void onPrepareOk(int slot, ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {
+        if (!this.curracceptors.contains(processId)) {
+            logger.warn("Received prepare-ok from non-acceptor {}", processId);
+            return;
+        }
+        if (this.state != State.WAITING_PREPARE_OK) {
+            logger.warn("Received prepare-ok in state {}", this.state);
+            return;
+        }
+        if (this.currslot != slot) {
+            logger.warn("Received prepare-ok for slot {} in state {}", slot, this.state);
+            return;
+        }
 
-	public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept,
-			MultipaxosConfig config) {
-		if (this.slots.get(currentSlot).currentProposal == null)
-			throw new IllegalStateException("Don't have a proposal");
+        PaxosLog.log("received-prepare-ok",
+                "from", processId,
+                "ballot", ballot,
+                "highestAccept", highestAccept.orElse(null));
 
-		// if (slot.phase != Phase.PREPARE)
-		// throw new IllegalStateException("Not in prepare phase");
+        if (highestAccept.isPresent()) {
+            var accept = highestAccept.get();
+            if (this.proposalBallot.compare(accept.ballot) != Ballot.Order.GREATER) {
+                PaxosLog.log("updated-proposal",
+                        "old", new Proposal(this.proposalBallot, this.proposal),
+                        "new", accept);
+                this.proposal = accept.value;
+                this.proposalBallot = accept.ballot;
+                logger.debug("Updated proposal to {}", accept);
+            }
+        }
 
-		if (highestAccept.isPresent()) {
+        this.curroks.add(processId);
+        if (this.curroks.size() == this.getMajority()) {
+            var proposal = new Proposal(this.ballot, this.proposal);
+            this.state = State.WAITING_PROPOSE_OK;
+            this.curroks.clear();
 
-		}
-		// TODO: Detect if leader is behind current slot? I think?
-		// If the leader received a prepareOk from an acceptor, with a Proposal Optional
-		// present (instead of null).
-		// It needs to accept that proposal if he didn't accept that proposal yet, or if
-		// the proposal has a higher ballot
-	}
+            this.curracceptors.forEach(acceptor -> {
+                this.queue.push(PaxosCmd.acceptRequest(acceptor, proposal, this.currslot));
+            });
+        }
+    }
 
-	public boolean canPropose() {
-		return false; // TODO: maybe not necessary in multipaxos
-	}
+    public void onAcceptOk(int slot, ProcessId processId, Ballot ballot) {
+        if (!this.curracceptors.contains(processId)) {
+            logger.warn("Received accept-ok from non-acceptor {}", processId);
+            return;
+        }
+        if (this.state != State.WAITING_PROPOSE_OK) {
+            logger.warn("Received accept-ok in state {}", this.state);
+            return;
+        }
+        if (this.currslot != slot || !this.ballot.equals(ballot)) {
+            logger.warn("Received accept-ok for slot {} in state {}", slot, this.state);
+            return;
+        }
 
-	public void receiveAcceptOk(ProcessId processId, Ballot ballot, MultipaxosConfig config) {
-		var currentSlot = slots.computeIfAbsent(this.currentSlot,
-				(slot) -> new Slot(config.acceptors, config.learners));
+        this.curroks.add(processId);
+        if (this.curroks.size() == this.getMajority()) {
+            var learners = this.configurations.get(this.currslot).learners;
+            learners.forEach(learner -> {
+                this.queue.push(PaxosCmd.learn(learner, this.proposal, this.currslot));
+            });
 
-		if (currentSlot.phase != Phase.ACCEPT) {
-			logger.debug("Ignoring acceptOk from {} because we're in phase {}", processId, currentSlot.phase);
-			return;
-		}
+            this.cancelTimer();
+            this.state = State.WAITING_PROPOSAL;
+            this.proposalBallot = new Ballot();
+            this.currslot += 1;
+            this.proposal = null;
+            this.curracceptors = null;
+            this.curroks.clear();
+        }
+    }
 
-		if (!ballot.equals(currentSlot.currentBallot)) {
-			logger.debug("Ignoring acceptOk from {} because it's for a different ballot", processId);
-			return;
-		}
+    public void onTimer(int timerId) {
+        assert this.currtimer == timerId;
 
-		currentSlot.oks.add(processId);
+        PaxosLog.log("majority-timeout",
+                "state", this.state,
+                "ballot", this.ballot);
 
-		if (currentSlot.oks.size() == currentSlot.quorumSize) {
-			logger.debug("Got quorum of acceptOks, moving to Decided phase");
-			this.io.push(MultiPaxosCmd.cancelTimer(currentSlot.timerId));
-			currentSlot.timerId++;
-			currentSlot.phase = Phase.DECIDED;
-			currentSlot.learners.forEach(learner -> {
-				this.io.push(MultiPaxosCmd.sendDecided(learner, currentSlot.currentProposal));
-			});
-		}
-	}
+        this.state = State.WAITING_PREPARE_OK;
+        this.ballot = this.ballot.withIncSeqNumber();
+        this.proposalBallot = new Ballot();
+        this.curracceptors.forEach(acceptor -> {
+            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
+        });
+        this.setupTimer(this.getRandomisedMajorityTimeout());
+    }
+
+    public Optional<ProposalValue> preempt() {
+        var prop = Optional.ofNullable(this.proposal);
+        this.proposal = null;
+        this.curracceptors = null;
+        this.state = State.WAITING_PROPOSAL;
+        this.proposalBallot = new Ballot();
+        this.cancelTimer();
+        return prop;
+    }
+
+    private void setupTimer(Duration duration) {
+        this.currtimer += 1;
+        this.queue.push(PaxosCmd.setupTimer(0, this.currtimer, duration));
+    }
+
+    private void cancelTimer() {
+        this.queue.push(PaxosCmd.cancelTimer(0, this.currtimer));
+        this.currtimer += 1;
+    }
+
+    private Duration getRandomisedMajorityTimeout() {
+        return Duration.ofMillis((long) (this.majorityTimeout.toMillis() * (1 + Math.random())));
+    }
+
+    private int getMajority() {
+        return this.curracceptors.size() / 2 + 1;
+    }
 }
