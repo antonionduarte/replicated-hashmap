@@ -6,6 +6,27 @@
 *.class
 target
 
+# Other
+.classpath
+.factorypath
+.project
+
+# Report
+/report/*.aux
+/report/*.bbl
+/report/*.blg
+/report/main.fdb_latexmk
+/report/main.files
+/report/*.files
+/report/*.cut
+/report/*.out
+/report/*.fls
+/report/*.synctex.gz
+/report/*.pdf
+
+# Eclipse
+.settings
+
 # Log file
 *.log
 
