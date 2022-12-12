@@ -25,6 +25,7 @@ import asd.protocols.statemachine.notifications.ExecuteNotification;
 import asd.protocols.statemachine.notifications.UnchangedConfigurationNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
+import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
@@ -88,6 +89,8 @@ public class StateMachine extends GenericProtocol {
 	/// Leader tracking
 	private Optional<Host> leader;
 	private final Map<BatchHash, SentBatchEntry> leaderSentBatches;
+	private final Duration leaderTimeoutDuration;
+	private Instant leaderLastMessage;
 
 	/// JoinRequest tracking
 	// Keeps track of any peers that sent us a join request so we can send them a
@@ -128,6 +131,8 @@ public class StateMachine extends GenericProtocol {
 		// Leader tracking
 		this.leader = Optional.empty();
 		this.leaderSentBatches = new HashMap<>();
+		this.leaderTimeoutDuration = Duration.parse(props.getProperty("statemachine_leader_timeout"));
+		this.leaderLastMessage = Instant.now();
 
 		/// Membership tracking
 		/// JoinRequest tracking
@@ -189,6 +194,7 @@ public class StateMachine extends GenericProtocol {
 		registerTimerHandler(BatchBuildTimer.ID, this::uponBatchBuild);
 		registerTimerHandler(RetryTimer.ID, this::uponRetryTimer);
 		registerTimerHandler(OrderBatchTimer.ID, this::uponOrderBatchTimer);
+		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
 	}
 
 	@Override
@@ -196,6 +202,10 @@ public class StateMachine extends GenericProtocol {
 		// Inform the state machine protocol about the channel we created in the
 		// constructor
 		triggerNotification(new ChannelReadyNotification(channelId, self));
+
+		var leaderTimeoutRandomness = (long) ((double) this.leaderTimeoutDuration.toMillis() * Math.random());
+		//setupPeriodicTimer(new CheckLeaderTimeoutTimer(), 0,
+		//		this.leaderTimeoutDuration.toMillis() + leaderTimeoutRandomness);
 
 		String host = props.getProperty("statemachine_initial_membership");
 		System.out.println("MEMBERSHIP = " + host);
@@ -243,6 +253,7 @@ public class StateMachine extends GenericProtocol {
 		var instance = orderedCommand.instance();
 		logger.debug("Executing command {} for instance {}", command, instance);
 
+		this.leaderLastMessage = Instant.now();
 		switch (command.getKind()) {
 			case BATCH -> {
 				var batch = command.getBatch();
@@ -374,7 +385,8 @@ public class StateMachine extends GenericProtocol {
 		logger.debug("Received leader changed notification: {}", notification);
 		if (!this.leader.isPresent() || !this.leader.get().equals(notification.leader)) {
 			// If we are changing to a different leader
-			
+
+			logger.info("Leader changed to: {}", notification.leader);
 			this.leader = Optional.of(notification.leader);
 			var batches = this.leaderSentBatches.values().stream().map(SentBatchEntry::batch).toList();
 			this.leaderSentBatches.clear();
@@ -539,6 +551,16 @@ public class StateMachine extends GenericProtocol {
 			var batch = sent.batch;
 			// TODO: is this even needed?
 		}
+	}
+
+	private void uponCheckLeaderTimeout(CheckLeaderTimeoutTimer timer, long timerId) {
+		if (this.isLeader() || this.leader.isEmpty())
+			return;
+
+		logger.info("Leader {} timed out, attempting to become leader", this.leader.get());
+		var command = Command.noop().toBytes();
+		var notification = new ProposeRequest(command);
+		this.sendRequest(notification, Agreement.ID);
 	}
 
 }

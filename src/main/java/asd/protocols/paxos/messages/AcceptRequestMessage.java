@@ -22,6 +22,7 @@ public class AcceptRequestMessage extends ProtoMessage {
     public AcceptRequestMessage(int instance, List<ProcessId> membership, Proposal proposal) {
         super(ID);
         assert membership != null;
+        assert membership.stream().allMatch(p -> p != null);
         assert proposal != null;
 
         this.instance = instance;
