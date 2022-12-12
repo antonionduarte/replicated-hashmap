@@ -20,7 +20,7 @@ import asd.paxos.ProposalValue;
 
 public class Proposer {
     private static enum State {
-        WAITING_PROPOSAL, WAITING_PREPARE_OK, WAITING_PROPOSE_OK,
+        WAITING_PROPOSAL, WAITING_PREPARE_OK, WAITING_ACCEPT_OK,
     }
 
     private static final Logger logger = LogManager.getLogger(Proposer.class);
@@ -64,20 +64,23 @@ public class Proposer {
     public void propose(ProposalValue value) {
         assert this.canPropose();
 
-        this.state = State.WAITING_PREPARE_OK;
         this.proposalBallot = new Ballot();
         this.proposal = value;
         this.curracceptors = Set.copyOf(this.configurations.get(this.currslot).acceptors);
         this.curroks.clear();
         logger.debug("Acceptors for slot {}: {}", this.currslot, this.curracceptors);
 
+        // logger.info("Proposing with lead = {}", this.hasLead);
         if (!this.hasLead) {
+            this.state = State.WAITING_PREPARE_OK;
             this.curracceptors.forEach(acceptor -> {
                 this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
             });
         } else {
+            // TODO: Check if this.ballot is correct
+            this.state = State.WAITING_ACCEPT_OK;
             this.curracceptors.forEach(acceptor -> {
-                this.queue.push(PaxosCmd.acceptRequest(acceptor, new Proposal(this.proposalBallot, this.proposal),
+                this.queue.push(PaxosCmd.acceptRequest(acceptor, new Proposal(this.ballot, this.proposal),
                         this.currslot));
             });
         }
@@ -111,7 +114,6 @@ public class Proposer {
                         "new", accept);
                 this.proposal = accept.value;
                 this.proposalBallot = accept.ballot;
-                this.hasLead = true;
                 logger.debug("Updated proposal to {}", accept);
             }
         }
@@ -119,8 +121,9 @@ public class Proposer {
         this.curroks.add(processId);
         if (this.curroks.size() == this.getMajority()) {
             var proposal = new Proposal(this.ballot, this.proposal);
-            this.state = State.WAITING_PROPOSE_OK;
+            this.state = State.WAITING_ACCEPT_OK;
             this.curroks.clear();
+            this.hasLead = true;
 
             this.curracceptors.forEach(acceptor -> {
                 this.queue.push(PaxosCmd.acceptRequest(acceptor, proposal, this.currslot));
@@ -133,7 +136,7 @@ public class Proposer {
             logger.debug("Received accept-ok for slot {} in state {}", slot, this.state);
             return;
         }
-        if (this.state != State.WAITING_PROPOSE_OK) {
+        if (this.state != State.WAITING_ACCEPT_OK) {
             logger.debug("Received accept-ok in state {}", this.state);
             return;
         }
@@ -176,13 +179,15 @@ public class Proposer {
         this.setupTimer(this.getRandomisedMajorityTimeout());
     }
 
-    public Optional<ProposalValue> preempt() {
+    public Optional<ProposalValue> preempt(boolean isLearn) {
+        // logger.info("Preempted");
         var prop = Optional.ofNullable(this.proposal);
         this.proposal = null;
         this.curracceptors = Set.of();
         this.state = State.WAITING_PROPOSAL;
         this.proposalBallot = new Ballot();
-        this.hasLead = false;
+        if (!isLearn)
+            this.hasLead = false;
         this.cancelTimer();
         return prop;
     }

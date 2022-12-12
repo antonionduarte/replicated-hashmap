@@ -95,7 +95,7 @@ public class MultiPaxos implements Paxos {
                     return;
 
                 this.learner.onDecide(command.slot(), command.value());
-                var proposal = this.proposer.preempt();
+                var proposal = this.proposer.preempt(true);
                 if (proposal.isPresent() && !proposal.get().equals(command.value()))
                     this.proposalQueue.addFirst(proposal.get());
             }
@@ -170,7 +170,7 @@ public class MultiPaxos implements Paxos {
                 case NEW_LEADER -> {
                     var cmd = command.getNewLeader();
                     if (!cmd.leader().equals(this.id)) {
-                        var val = this.proposer.preempt();
+                        var val = this.proposer.preempt(false);
                         if (val.isPresent())
                             cmd.commands().add(val.get().data);
                         while (!this.proposalQueue.isEmpty())
