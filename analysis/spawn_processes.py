@@ -17,7 +17,7 @@ BASE_STATEMACHINE_PORT = 3000
 def process_log(logs: str):
     return None
 
-
+# create the output folder if not exists
 def prepare_environment():
     return None
 
