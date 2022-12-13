@@ -1,6 +1,6 @@
 import json
-import multiprocessing
-import os
+import multiprocessing as mp
+import spawn_paxos
 from dataclasses import dataclass
 
 CONFIG_PATH = "./config.json"
@@ -27,9 +27,10 @@ class SingleExperiment:
     number_clients: int 
     number_replicas: int 
     percentage_writes: int 
-    percentage_reads: int 
+    percentage_reads: int
 
 
+# Divide a configuration file into several executable experiments
 def prepare_experiments(config: Config) -> list[SingleExperiment]:
     experiments = []
     number_clients = config.min_clients
@@ -43,22 +44,44 @@ def prepare_experiments(config: Config) -> list[SingleExperiment]:
     return experiments
 
 
+# Executes multiple experiments one by one
 def execute_experiments(experiments: list[SingleExperiment]):
     for experiment in experiments:
         execute_experiment(experiment)
 
 
+# Executes an experiment with the given experiment configuration
 def execute_experiment(experiment: SingleExperiment):
-    # yadda yadda code to execute the experiment with docker yadda yadda 
-    return None
+    client = mp.Process(target=worker_spawn_clients)
+
+    replica_processes = []
+    for i in range(1, experiment.number_replicas):
+        replica_processes.append(
+            mp.Process(target=worker_spawn_replica, args=(i, experiment.number_replicas)))
+        
+    client.start()
+    for process in replica_processes:
+        process.start()
+
+    client.join()
+    for process in replica_processes:
+        process.join()
 
 
-def main():
+# Worker function to be called by multiprocessing, handles spawning a replica
+def worker_spawn_replica(port: int, number_replicas: int):
+    spawn_paxos.spawn_paxos_java_docker(port, number_replicas)
+
+
+# Worker function to be called by multiprocessing, handles spawning the YCSB clients
+def worker_spawn_clients(number_replicas: int):
+    spawn_paxos.spawn_ycsb_clients_docker(number_replicas)
+    
+
+if __name__ == "__main__":
     config_json = json.loads(open(CONFIG_PATH).read())
     config = Config(config_json)
     experiments = prepare_experiments(config)
 
     execute_experiments(experiments)
-
-main()
 
