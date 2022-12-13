@@ -47,6 +47,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
     private ProcessId id;
     private boolean joined;
     private Paxos paxos;
+    private final String paxosVariant;
     private final Map<Pair<Integer, Integer>, Long> timers;
 
     public PaxosProtocol(Properties props) throws HandlerRegistrationException {
@@ -55,6 +56,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
         this.id = null;
         this.joined = false;
         this.paxos = null;
+        this.paxosVariant = props.getProperty("paxos_variant", "multi");
         this.timers = new HashMap<>();
 
         /*--------------------- Register Timer Handlers ----------------------------- */
@@ -343,7 +345,14 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
                 .withAcceptors(membership)
                 .withLearners(membership)
                 .build();
-        this.paxos = new MultiPaxos(this.id, config);
+
+        var variant = Paxos.Variant.valueOf(this.paxosVariant.toUpperCase());
+        switch (variant) {
+            case SINGLE -> this.paxos = new SinglePaxos(this.id, config);
+            case MULTI -> this.paxos = new MultiPaxos(this.id, config);
+            default -> throw new RuntimeException("Unknown Paxos variant");
+        }
+
     }
 
     private void onUnchangedConfiguration(UnchangedConfigurationNotification notification, short sourceProto) {

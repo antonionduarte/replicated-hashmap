@@ -8,4 +8,9 @@ public interface Paxos {
         PaxosCmd pop();
 
         Membership membership(int slot);
+
+        enum Variant {
+                SINGLE,
+                MULTI
+        }
 }
