@@ -1,7 +1,7 @@
 {
-	"min-clients": 1000,
-	"max-clients": 10000,
-	"step": 100,
+	"min-clients": 5,
+	"max-clients": 8,
+	"step": 1,
 	"number-replicas": 3,
 	"percentage-writes": 50,
 	"percentage-reads": 50

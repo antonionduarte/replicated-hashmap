@@ -14,4 +14,5 @@ rsync -avzq --exclude analysis/metrics --exclude analysis/experiments ./ $CLUSTE
 ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'rm -rf asd-project2/analysis/experiments && sleep 5'"
 ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'cd asd-project2 && scripts/run-experiment.sh $EXPERIMENT_NAME'"
 ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarcp -r $MACHINE_NAME:./asd-project2/analysis/experiments asd-project2/analysis/"
+
 rsync -avz --exclude 'OAR.*' --exclude '.*' --exclude analysis/metrics $CLUSTER_HOST:./asd-project2/analysis/experiments/ ./analysis/experiments/

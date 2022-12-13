@@ -8,7 +8,7 @@ if [ -z $processes ] || [ $processes -lt 1 ]; then
 fi
 
 i=0
-base_p2p_port=36000
+base_p2p_port=3000
 base_server_port=35000
 
 membership="localhost:${base_p2p_port}"
