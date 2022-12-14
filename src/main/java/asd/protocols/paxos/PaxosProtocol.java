@@ -44,6 +44,9 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
 	public final static String NAME = "Paxos";
 
+	private final static String VARIANT_SINGLE = "single";
+	private final static String VARIANT_MULTI = "multi";
+
 	private ProcessId id;
 	private boolean joined;
 	private Paxos paxos;
@@ -56,7 +59,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		this.id = null;
 		this.joined = false;
 		this.paxos = null;
-		this.paxosVariant = props.getProperty("paxos_variant", "multi");
+		this.paxosVariant = props.getProperty("paxos_variant");
 		this.timers = new HashMap<>();
 
 		/*--------------------- Register Timer Handlers ----------------------------- */
@@ -348,12 +351,11 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 				.build();
 		assert membership.contains(this.id);
 
-		var variant = Paxos.Variant.valueOf(this.paxosVariant.toUpperCase());
-		switch (variant) {
-			case SINGLE -> this.paxos = new SinglePaxos(this.id, config);
-			case MULTI -> this.paxos = new MultiPaxos(this.id, config);
+		this.paxos = switch (this.paxosVariant) {
+			case VARIANT_SINGLE -> new SinglePaxos(this.id, config);
+			case VARIANT_MULTI -> new MultiPaxos(this.id, config);
 			default -> throw new RuntimeException("Unknown Paxos variant");
-		}
+		};
 	}
 
 	private void onUnchangedConfiguration(UnchangedConfigurationNotification notification, short sourceProto) {
