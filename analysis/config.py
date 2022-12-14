@@ -25,7 +25,7 @@ class Config:
 
 @dataclass
 class SingleExperiment:
-    num_exp_set: int
+    exp_name: str
     number_clients: int
     number_replicas: int
     percentage_writes: int
@@ -34,14 +34,14 @@ class SingleExperiment:
 
 
 # Divide a configuration file into several executable experiments
-def prepare_experiments(config: Config, num_exp_set: int) -> list[SingleExperiment]:
+def prepare_experiments(config: Config, exp_name: str) -> list[SingleExperiment]:
     experiments = []
     number_clients = config.min_clients
     while number_clients <= config.max_clients:
         number_replicas = config.min_replicas
         while number_replicas <= config.max_replicas:
             experiments.append(SingleExperiment(
-                num_exp_set,
+                exp_name,
                 number_clients,
                 number_replicas,
                 config.percentage_writes,

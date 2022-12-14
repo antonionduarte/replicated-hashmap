@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import sys
 import time
 import config
 
@@ -50,5 +51,6 @@ def worker_spawn_clients(config: SingleExperiment):
 
 
 if __name__ == "__main__":
-    experiments = config.prepare_experiments(config.parse_config(CONFIG_PATH), num_exp_set())
+    exp_name = "exp"+num_exp_set() if len(sys.argv) == 1 else sys.argv[1]
+    experiments = config.prepare_experiments(config.parse_config(CONFIG_PATH), exp_name)
     execute_experiments(experiments)

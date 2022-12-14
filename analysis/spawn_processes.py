@@ -23,8 +23,8 @@ def process_log(filename: str, logs: list[str]):
 
 
 def output_filename(config: SingleExperiment):
-    os.makedirs(f"./{EXPERIMENTS_FOLDER}exp_set{config.num_exp_set}/", exist_ok=True)
-    return f"./{EXPERIMENTS_FOLDER}exp_set{config.num_exp_set}/" \
+    os.makedirs(f"./{EXPERIMENTS_FOLDER}{config.exp_name}/", exist_ok=True)
+    return f"./{EXPERIMENTS_FOLDER}{config.exp_name}/" \
            f"{config.number_clients}C_" \
            f"{config.number_replicas}R_" \
            f"{config.payload}B_" \
@@ -33,6 +33,9 @@ def output_filename(config: SingleExperiment):
 
 
 def num_exp_set():
+    if not os.path.exists(EXPERIMENTS_FOLDER):
+        return 1
+
     num = 1
     while True:
         if f"exp_set{num}" not in os.listdir(EXPERIMENTS_FOLDER):

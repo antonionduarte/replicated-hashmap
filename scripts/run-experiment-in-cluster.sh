@@ -1,18 +1,24 @@
-if [ $# -ne 4 ]: then
-    echo "Usage: $0 <cluster ssh host> <job id> <machine name> <experiment name>"
+#!/bin/bash
+
+if [ $# -lt 2 ]
+then
+    echo "Usage: $0 <job id> <machine name> [exp name]"
     exit 1
 fi
 
-CLUSTER_HOST=$1
-JOB_ID=$2
-MACHINE_NAME=$3
-EXPERIMENT_NAME=$4
+CLUSTER_HOST="dicluster"
+FOLDER="replicated-hashmap/"
+CLUSTER_FOLDER=$CLUSTER_HOST":"$FOLDER
+JOB_ID=$1
+MACHINE_NAME=$2
 
-rsync -avzq --exclude analysis/metrics --exclude analysis/experiments ./ $CLUSTER_HOST:./asd-project2
+shift 2
+
+#rsync -avzq ./analysis/experiments $CLUSTER_FOLDER"/analysis/experiments"
 
 # Delete any previous results
-ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'rm -rf asd-project2/analysis/experiments && sleep 5'"
-ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'cd asd-project2 && scripts/run-experiment.sh $EXPERIMENT_NAME'"
-ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarcp -r $MACHINE_NAME:./asd-project2/analysis/experiments asd-project2/analysis/"
+echo $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'cd $FOLDER && python3 analysis/executor.py $@'"
+ssh $CLUSTER_HOST "OAR_JOB_ID=$JOB_ID oarsh $MACHINE_NAME 'cd $FOLDER && python3 analysis/executor.py $@'"
 
-rsync -avz --exclude 'OAR.*' --exclude '.*' --exclude analysis/metrics $CLUSTER_HOST:./asd-project2/analysis/experiments/ ./analysis/experiments/
+echo rsync -r $CLUSTER_FOLDER"analysis/experiments/" analysis/experiments/
+rsync -r $CLUSTER_FOLDER"analysis/experiments/" analysis/experiments/
