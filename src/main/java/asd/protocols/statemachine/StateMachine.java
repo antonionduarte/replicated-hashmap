@@ -308,7 +308,6 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void sendBatchToLeader(Batch batch) {
-		System.out.println("Batch size: " + String.valueOf(batch.operations.length));
 		if (this.leader.isPresent() && !this.isLeader()) {
 			logger.debug("Forwarding batch with size: {}", batch.operations.length);
 			var message = new OrderBatch(batch);
