@@ -5,6 +5,12 @@
 # Python
 __pycache__
 
+# VSCode/Eclipse files
+/.classpath
+/.factorypath
+/.project
+/.settings
+
 # Compiled class file
 *.class
 target
