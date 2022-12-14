@@ -28,6 +28,7 @@ import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.OrderBatchTimer;
+import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -195,6 +196,7 @@ public class StateMachine extends GenericProtocol {
 		registerTimerHandler(RetryTimer.ID, this::uponRetryTimer);
 		registerTimerHandler(OrderBatchTimer.ID, this::uponOrderBatchTimer);
 		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
+		registerTimerHandler(ProposeNoopTimer.ID, this::uponProposeNoop);
 	}
 
 	@Override
@@ -204,8 +206,10 @@ public class StateMachine extends GenericProtocol {
 		triggerNotification(new ChannelReadyNotification(channelId, self));
 
 		var leaderTimeoutRandomness = (long) ((double) this.leaderTimeoutDuration.toMillis() * Math.random());
-		//setupPeriodicTimer(new CheckLeaderTimeoutTimer(), 0,
-		//		this.leaderTimeoutDuration.toMillis() + leaderTimeoutRandomness);
+		setupPeriodicTimer(new CheckLeaderTimeoutTimer(), 0,
+				this.leaderTimeoutDuration.toMillis() + leaderTimeoutRandomness);
+
+		setupPeriodicTimer(new ProposeNoopTimer(), 0, this.leaderTimeoutDuration.toMillis() / 3);
 
 		String host = props.getProperty("statemachine_initial_membership");
 		System.out.println("MEMBERSHIP = " + host);
@@ -304,6 +308,7 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void sendBatchToLeader(Batch batch) {
+		System.out.println("Batch size: " + String.valueOf(batch.operations.length));
 		if (this.leader.isPresent() && !this.isLeader()) {
 			logger.debug("Forwarding batch with size: {}", batch.operations.length);
 			var message = new OrderBatch(batch);
@@ -322,8 +327,14 @@ public class StateMachine extends GenericProtocol {
 		this.sendBatchToLeader(batch);
 	}
 
-	public boolean isLeader() {
+	private boolean isLeader() {
 		return this.leader.isPresent() && this.leader.get().equals(this.self);
+	}
+
+	private void proposeNoop() {
+		var command = Command.noop().toBytes();
+		var notification = new ProposeRequest(command);
+		this.sendRequest(notification, Agreement.ID);
 	}
 
 	/*--------------------------------- Requests ---------------------------------------- */
@@ -423,6 +434,7 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("Received order batch from replica while not being the leader, ignoring");
 			return;
 		}
+		logger.debug("Received order batch from replica: {}", sender);
 		var request = new ProposeRequest(message.batch.toBytes());
 		this.sendRequest(request, Agreement.ID);
 	}
@@ -447,7 +459,7 @@ public class StateMachine extends GenericProtocol {
 			return;
 		}
 
-		logger.debug("Joining system at instance {} with membership {}", systemJoinReply.instance,
+		logger.info("Joining system at instance {} with membership {}", systemJoinReply.instance,
 				systemJoinReply.membership);
 
 		this.membership = new LinkedList<>(systemJoinReply.membership);
@@ -458,6 +470,8 @@ public class StateMachine extends GenericProtocol {
 		var installRequest = new InstallStateRequest(systemJoinReply.state);
 		this.sendRequest(installRequest, HashApp.PROTO_ID);
 
+		logger.info("System join reply instance = {}, membership = {}", systemJoinReply.instance,
+				systemJoinReply.membership);
 		var joinNotification = new JoinedNotification(systemJoinReply.instance, systemJoinReply.membership);
 		this.triggerNotification(joinNotification);
 		this.state = State.ACTIVE;
@@ -557,10 +571,18 @@ public class StateMachine extends GenericProtocol {
 		if (this.isLeader() || this.leader.isEmpty())
 			return;
 
+		var elapsed = Duration.between(Instant.now(), this.leaderLastMessage);
+		if (elapsed.compareTo(this.leaderTimeoutDuration) < 0)
+			return;
+
 		logger.info("Leader {} timed out, attempting to become leader", this.leader.get());
-		var command = Command.noop().toBytes();
-		var notification = new ProposeRequest(command);
-		this.sendRequest(notification, Agreement.ID);
+		this.proposeNoop();
+	}
+
+	private void uponProposeNoop(ProposeNoopTimer timer, long timerId) {
+		if (!this.isLeader())
+			return;
+		this.proposeNoop();
 	}
 
 }

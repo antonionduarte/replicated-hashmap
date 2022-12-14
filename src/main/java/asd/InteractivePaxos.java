@@ -36,13 +36,12 @@ public class InteractivePaxos extends GenericProtocol {
     @Override
     public void init(Properties props) throws HandlerRegistrationException, IOException {
         var protocol = this;
-        new Thread(new Runnable() {
+        new Thread(() -> {
 
-            @Override
-            public void run() {
-                long opid = 0;
-                try (var scanner = new Scanner(System.in)) {
-                    while (true) {
+            long opid = 0;
+            try (var scanner = new Scanner(System.in)) {
+                while (true) {
+                    try {
                         var line = scanner.nextLine();
                         var components = line.split(" ");
 
@@ -70,6 +69,8 @@ public class InteractivePaxos extends GenericProtocol {
                             }
                             default -> System.out.println("Unknown command " + components[0]);
                         }
+                    } catch (Exception e) {
+                        System.err.println("Error executing command: " + e.getMessage());
                     }
                 }
             }
