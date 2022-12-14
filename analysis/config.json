@@ -1,8 +1,11 @@
 {
-	"min-clients": 5,
-	"max-clients": 8,
-	"step": 1,
-	"number-replicas": 3,
+	"min-clients": 10,
+	"max-clients": 30,
+	"client-step": 5,
+	"min-replicas": 3,
+	"max-replicas": 6,
+	"replica-step": 1,
 	"percentage-writes": 50,
-	"percentage-reads": 50
+	"percentage-reads": 50,
+	"payload": 1024
 }

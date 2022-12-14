@@ -12,5 +12,4 @@ java -Dlog4j.configurationFile=log4j2.xml \
 	-threads $nthreads -p fieldlength=$payload \
 	-p hosts=$servers \
 	-p readproportion=${readsper} -p updateproportion=${writesper} \
-	"$@" \
-	2> client.log
+	"$@"

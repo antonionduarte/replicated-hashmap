@@ -128,6 +128,15 @@
 
 \section{Introduction}
 
+A replicated hash map is a distributed data structure that allows for efficient access to data across a network of machines. It uses the concept of a hash map, which is a data structure that stores key-value pairs and allows for efficient lookup of values based on their associated keys. In a replicated hash map, multiple copies of the hash map are maintained on different machines in the network, and agreement protocols can be used to ensure that all copies are kept consistent with each other.
+
+State machine replication is a technique used in distributed systems to ensure that the same sequence of operations is performed on all replicas of a given state machine. This is typically achieved through the use of an agreement protocol, such as Paxos or Raft, which is used to coordinate the actions of the replicas and reach consensus on the order in which operations should be applied.
+
+Paxos \cite{leslie1998part} \cite{lamport2001paxos} \cite{van2015paxos} and Multi-Paxos \cite{lamport2001paxos} \cite{du2009multi} \cite{van2015paxos} are examples of agreement protocols that are commonly used in distributed systems to achieve consistency in replicated data structures. The Paxos algorithm was first described by Leslie Lamport in 1998 and is a method for reaching consensus among a group of nodes in a distributed system. Multi-Paxos is a variant of the Paxos algorithm that allows for improved performance in scenarios where there are multiple replicated data structures, or multiple instances of the Paxos algorithm running concurrently.
+
+In both Paxos and Multi-Paxos, nodes in the distributed system communicate with each other using a series of rounds, during which they propose values, vote on the proposed values, and ultimately agree on a single value to be chosen. Once consensus has been reached, the agreed-upon value can be safely used by the nodes in the system, ensuring that all copies of the replicated data are consistent with each other.
+
+The remainder of this article is organized as follows: In Section 2 we will be going over the Related Work, explaining more thoroughly the mentioned protocols; In Section 3 we will go over the details of our implementation of the protocols and how they interact with each other; In Section 4 we present the results of our experimental evaluation, testing the system with an increasing throughput of clients issuing operations and membership changes. In Section 5 we will summarize and take conclusions on this work.
 \section{Related Work}
 
 \section{Implementation}
