@@ -1,7 +1,7 @@
 {
-	"min-clients": 5,
-	"max-clients": 5,
-	"client-step": 5,
+	"min-clients": 1500,
+	"max-clients": 2500,
+	"client-step": 100,
 	"min-replicas": 3,
 	"max-replicas": 3,
 	"replica-step": 1,
