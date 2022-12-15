@@ -115,6 +115,8 @@ public class PaxosCmd {
      *          If this command is issued by the user then `processId` must be the
      *          id of the local process.
      * 
+     * @param slot
+     *            The slot of the prepare request.
      * @param processId
      *            The id of the process to which the prepare request should be
      *            delivered.
@@ -123,9 +125,9 @@ public class PaxosCmd {
      * 
      */
     public static record PrepareRequest(
+            int slot,
             ProcessId processId,
-            Ballot ballot,
-            int slot) {
+            Ballot ballot) {
     }
 
     /**
@@ -135,21 +137,21 @@ public class PaxosCmd {
      *          If this command is issued by the user then `processId` must be the
      *          id of the local process.
      * 
+     * @param slot
+     *            The slot of the prepare ok.
      * @param processId
      *            The id of the process to which the prepare ok should be delivered.
      * @param ballot
      *            The ballot of the prepare ok.
      * @param highestAccept
      *            The highest accepted proposal.
-     * @param slot
-     *            The slot of the prepare ok.
      * 
      */
     public static record PrepareOk(
+            int slot,
             ProcessId processId,
             Ballot ballot,
-            Optional<Proposal> highestAccept,
-            int slot) {
+            List<ProposalSlot> accepted) {
     }
 
     /**
@@ -159,18 +161,18 @@ public class PaxosCmd {
      *          If this command is issued by the user then `processId` must be the
      *          id of the local process.
      * 
+     * @param slot
+     *            The slot of the accept request.
      * @param processId
      *            The id of the process to which the accept request should be
      *            delivered.
      * @param proposal
      *            The proposal of the accept request.
-     * @param slot
-     *            The slot of the accept request.
      */
     public static record AcceptRequest(
+            int slot,
             ProcessId processId,
-            Proposal proposal,
-            int slot) {
+            Proposal proposal) {
     }
 
     /**
@@ -181,17 +183,17 @@ public class PaxosCmd {
      *          id of
      *          the local process.
      * 
+     * @param slot
+     *            The slot of the accept ok.
      * @param processId
      *            The id of the process to which the accept ok should be delivered.
      * @param ballot
      *            The ballot of the accept ok.
-     * @param slot
-     *            The slot of the accept ok.
      */
     public static record AcceptOk(
+            int slot,
             ProcessId processId,
-            Ballot ballot,
-            int slot) {
+            Ballot ballot) {
     }
 
     /**
@@ -202,17 +204,17 @@ public class PaxosCmd {
      *          id of
      *          the local process.
      * 
+     * @param slot
+     *            The slot of the learn.
      * @param processId
      *            The id of the process to which the learn should be delivered.
      * @param value
      *            The value of the learn.
-     * @param slot
-     *            The slot of the learn.
      */
     public static record Learn(
+            int slot,
             ProcessId processId,
-            ProposalValue value,
-            int slot) {
+            ProposalValue value) {
     }
 
     /**
@@ -367,28 +369,28 @@ public class PaxosCmd {
         return new PaxosCmd(Kind.PROPOSE, new Propose(command));
     }
 
-    public static PaxosCmd prepareRequest(ProcessId processId, Ballot ballot, int slot) {
-        return new PaxosCmd(Kind.PREPARE_REQUEST, new PrepareRequest(processId, ballot, slot));
+    public static PaxosCmd prepareRequest(int slot, ProcessId processId, Ballot ballot) {
+        return new PaxosCmd(Kind.PREPARE_REQUEST, new PrepareRequest(slot, processId, ballot));
     }
 
     public static PaxosCmd prepareOk(
+            int slot,
             ProcessId processId,
             Ballot ballot,
-            Optional<Proposal> highestAccept,
-            int slot) {
-        return new PaxosCmd(Kind.PREPARE_OK, new PrepareOk(processId, ballot, highestAccept, slot));
+            List<ProposalSlot> accepted) {
+        return new PaxosCmd(Kind.PREPARE_OK, new PrepareOk(slot, processId, ballot, accepted));
     }
 
-    public static PaxosCmd acceptRequest(ProcessId processId, Proposal proposal, int slot) {
-        return new PaxosCmd(Kind.ACCEPT_REQUEST, new AcceptRequest(processId, proposal, slot));
+    public static PaxosCmd acceptRequest(int slot, ProcessId processId, Proposal proposal) {
+        return new PaxosCmd(Kind.ACCEPT_REQUEST, new AcceptRequest(slot, processId, proposal));
     }
 
-    public static PaxosCmd acceptOk(ProcessId processId, Ballot ballot, int slot) {
-        return new PaxosCmd(Kind.ACCEPT_OK, new AcceptOk(processId, ballot, slot));
+    public static PaxosCmd acceptOk(int slot, ProcessId processId, Ballot ballot) {
+        return new PaxosCmd(Kind.ACCEPT_OK, new AcceptOk(slot, processId, ballot));
     }
 
-    public static PaxosCmd learn(ProcessId processId, ProposalValue value, int slot) {
-        return new PaxosCmd(Kind.LEARN, new Learn(processId, value, slot));
+    public static PaxosCmd learn(int slot, ProcessId processId, ProposalValue value) {
+        return new PaxosCmd(Kind.LEARN, new Learn(slot, processId, value));
     }
 
     public static PaxosCmd setupTimer(int slot, int timerId, Duration timeout) {

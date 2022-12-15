@@ -1,10 +1,11 @@
 package asd.protocols.paxos.messages;
 
 import java.io.IOException;
-import java.util.Optional;
-
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import asd.paxos.Ballot;
-import asd.paxos.Proposal;
+import asd.paxos.ProposalSlot;
 import asd.protocols.PaxosBabel;
 import asd.protocols.paxos.PaxosProtocol;
 import io.netty.buffer.ByteBuf;
@@ -14,52 +15,45 @@ import pt.unl.fct.di.novasys.network.ISerializer;
 public class PrepareOkMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID;
 
-    public final int instance;
+    public final int slot;
     public final Ballot ballot;
-    public final Optional<Proposal> acceptedProposal;
-    public final boolean decided;
+    public final List<ProposalSlot> accepted;
 
-    public PrepareOkMessage(int instance, Ballot proposalNumber) {
-        this(instance, proposalNumber, Optional.empty(), false);
+    public PrepareOkMessage(int slot, Ballot proposalNumber) {
+        this(slot, proposalNumber, List.of());
     }
 
-    public PrepareOkMessage(int instance, Ballot proposalNumber, Proposal acceptedProposal, boolean decided) {
-        this(instance, proposalNumber, Optional.of(acceptedProposal), decided);
+    public PrepareOkMessage(int slot, Ballot proposalNumber, ProposalSlot accepted) {
+        this(slot, proposalNumber, List.of(accepted));
     }
 
-    public PrepareOkMessage(int instance, Ballot ballot, Optional<Proposal> acceptedProposal, boolean decided) {
+    public PrepareOkMessage(int slot, Ballot ballot, List<ProposalSlot> accepted) {
         super(ID);
 
-        assert acceptedProposal.isPresent() || !decided;
-
-        this.instance = instance;
+        this.slot = slot;
         this.ballot = ballot;
-        this.acceptedProposal = acceptedProposal;
-        this.decided = decided;
+        this.accepted = Collections.unmodifiableList(accepted);
     }
 
     public static final ISerializer<PrepareOkMessage> serializer = new ISerializer<PrepareOkMessage>() {
         @Override
         public void serialize(PrepareOkMessage msg, ByteBuf buf) throws IOException {
-            buf.writeInt(msg.instance);
+            buf.writeInt(msg.slot);
             PaxosBabel.ballotSerializer.serialize(msg.ballot, buf);
-            buf.writeBoolean(msg.acceptedProposal.isPresent());
-            if (msg.acceptedProposal.isPresent()) {
-                PaxosBabel.proposalSerializer.serialize(msg.acceptedProposal.get(), buf);
-            }
-            buf.writeBoolean(msg.decided);
+            buf.writeInt(msg.accepted.size());
+            for (var p : msg.accepted)
+                PaxosBabel.proposalSlotSerializer.serialize(p, buf);
         }
 
         @Override
         public PrepareOkMessage deserialize(ByteBuf buf) throws IOException {
             int instance = buf.readInt();
             Ballot ballot = PaxosBabel.ballotSerializer.deserialize(buf);
-            Optional<Proposal> acceptedProposal = Optional.empty();
-            if (buf.readBoolean()) {
-                acceptedProposal = Optional.of(PaxosBabel.proposalSerializer.deserialize(buf));
-            }
-            boolean decided = buf.readBoolean();
-            return new PrepareOkMessage(instance, ballot, acceptedProposal, decided);
+            int acceptedSize = buf.readInt();
+            List<ProposalSlot> accepted = new ArrayList<>(acceptedSize);
+            for (int i = 0; i < acceptedSize; i++)
+                accepted.add(PaxosBabel.proposalSlotSerializer.deserialize(buf));
+            return new PrepareOkMessage(instance, ballot, Collections.unmodifiableList(accepted));
         }
     };
 

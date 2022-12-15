@@ -1,20 +1,38 @@
 package asd.protocols.statemachine;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Queue;
+import java.util.Set;
+import java.util.UUID;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
 import asd.protocols.agreement.notifications.LeaderChanged;
 import asd.protocols.agreement.requests.MemberAddRequest;
-import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.agreement.requests.MemberRemoveRequest;
 import asd.protocols.agreement.requests.MembershipUnchangedRequest;
+import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
 import asd.protocols.app.requests.InstallStateRequest;
 import asd.protocols.statemachine.commands.Batch;
 import asd.protocols.statemachine.commands.BatchBuilder;
-import asd.protocols.statemachine.commands.BatchHash;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;
 import asd.protocols.statemachine.commands.OrderedCommand;
@@ -30,21 +48,16 @@ import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
-import pt.unl.fct.di.novasys.channel.tcp.events.*;
+import pt.unl.fct.di.novasys.channel.tcp.events.InConnectionDown;
+import pt.unl.fct.di.novasys.channel.tcp.events.InConnectionUp;
+import pt.unl.fct.di.novasys.channel.tcp.events.OutConnectionDown;
+import pt.unl.fct.di.novasys.channel.tcp.events.OutConnectionFailed;
+import pt.unl.fct.di.novasys.channel.tcp.events.OutConnectionUp;
 import pt.unl.fct.di.novasys.network.data.Host;
-
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.*;
 
 /**
  * This is NOT fully functional StateMachine implementation. This is simply an
@@ -89,7 +102,7 @@ public class StateMachine extends GenericProtocol {
 
 	/// Leader tracking
 	private Optional<Host> leader;
-	private final Map<BatchHash, SentBatchEntry> leaderSentBatches;
+	private final Set<Command> leaderForwardedCommands;
 	private final Duration leaderTimeoutDuration;
 	private Instant leaderLastMessage;
 
@@ -116,6 +129,7 @@ public class StateMachine extends GenericProtocol {
 	// after the timer fires, the batch is built and sent to the agreement protocol.
 	private final BatchBuilder batchBuilder;
 	private final Duration batchBuildTimeout;
+	private final int batchMaxSize;
 	private long batchBuildTimer;
 
 	public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
@@ -132,7 +146,7 @@ public class StateMachine extends GenericProtocol {
 
 		// Leader tracking
 		this.leader = Optional.empty();
-		this.leaderSentBatches = new HashMap<>();
+		this.leaderForwardedCommands = new HashSet<>();
 		this.leaderTimeoutDuration = Duration.parse(props.getProperty("statemachine_leader_timeout"));
 		this.leaderLastMessage = Instant.now();
 
@@ -154,6 +168,7 @@ public class StateMachine extends GenericProtocol {
 		/// Operation batching
 		this.batchBuilder = new BatchBuilder();
 		this.batchBuildTimeout = Duration.parse(props.getProperty("statemachine_batch_build_timeout"));
+		this.batchMaxSize = Integer.parseInt(props.getProperty("statemachine_batch_max_size"));
 		this.batchBuildTimer = -1;
 
 		Properties channelProps = new Properties();
@@ -256,13 +271,12 @@ public class StateMachine extends GenericProtocol {
 
 		var command = orderedCommand.command();
 		var instance = orderedCommand.instance();
-		logger.debug("Executing command {} for instance {}", command, instance);
 
 		this.leaderLastMessage = Instant.now();
+		this.leaderForwardedCommands.remove(command);
 		switch (command.getKind()) {
 			case BATCH -> {
 				var batch = command.getBatch();
-				this.leaderSentBatches.remove(batch.hash);
 				logger.debug("Executing batch {} with size {}", batch.hash, batch.operations.length);
 
 				for (var operation : batch.operations) {
@@ -321,6 +335,11 @@ public class StateMachine extends GenericProtocol {
 		} else {
 			var message = new OrderCommand(command);
 			var leader = this.leader.get();
+			if (command.getKind() == Command.Kind.BATCH) {
+				var batch = command.getBatch();
+				logger.debug("Sending batch {} with size {}", batch.hash, batch.operations.length);
+			}
+			this.leaderForwardedCommands.add(command);
 			this.sendMessage(message, leader);
 		}
 	}
@@ -336,7 +355,7 @@ public class StateMachine extends GenericProtocol {
 
 		this.batchBuilder.append(operation);
 		if (this.batchBuildTimer == -1) {
-			if (this.batchBuildTimeout.isZero()) {
+			if (this.batchBuildTimeout.isZero() || this.batchBuilder.size() >= this.batchMaxSize) {
 				this.finalizeBatch();
 			} else {
 				var timer = new BatchBuildTimer();
@@ -422,6 +441,12 @@ public class StateMachine extends GenericProtocol {
 		logger.debug("Received leader changed notification: {}", notification);
 		logger.info("Leader changed to: {}", notification.leader);
 		this.leader = Optional.of(notification.leader);
+
+		var forward = List.copyOf(this.leaderForwardedCommands);
+		this.leaderForwardedCommands.clear();
+		for (var cmd : forward)
+			this.sendCommandToLeader(cmd);
+
 		for (var cmd : notification.commands)
 			this.sendCommandToLeader(Command.fromBytes(cmd));
 	}
@@ -559,15 +584,7 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void uponOrderBatchTimer(OrderBatchTimer timer, long timerId) {
-		assert this.leaderSentBatches.isEmpty() || this.leader.isPresent();
-
-		var deadline = Instant.now().minus(Duration.ofSeconds(5)); // TODO make this configurable
-		for (var entry : this.leaderSentBatches.entrySet()) {
-			var hash = entry.getKey();
-			var sent = entry.getValue();
-			var batch = sent.batch;
-			// TODO: is this even needed?
-		}
+		assert this.leaderForwardedCommands.isEmpty() || this.leader.isPresent();
 	}
 
 	private void uponCheckLeaderTimeout(CheckLeaderTimeoutTimer timer, long timerId) {

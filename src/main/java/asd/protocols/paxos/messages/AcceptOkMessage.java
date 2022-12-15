@@ -12,28 +12,28 @@ import pt.unl.fct.di.novasys.network.ISerializer;
 public class AcceptOkMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID + 1;
 
-    public final int instance;
+    public final int slot;
     public final Ballot ballot;
 
-    public AcceptOkMessage(int instance, Ballot ballot) {
+    public AcceptOkMessage(int slot, Ballot ballot) {
         super(ID);
 
-        this.instance = instance;
+        this.slot = slot;
         this.ballot = ballot;
     }
 
     public static final ISerializer<AcceptOkMessage> serializer = new ISerializer<AcceptOkMessage>() {
         @Override
         public void serialize(AcceptOkMessage acceptOkMessage, ByteBuf out) throws IOException {
-            out.writeInt(acceptOkMessage.instance);
+            out.writeInt(acceptOkMessage.slot);
             PaxosBabel.ballotSerializer.serialize(acceptOkMessage.ballot, out);
         }
 
         @Override
         public AcceptOkMessage deserialize(ByteBuf in) throws IOException {
-            int instance = in.readInt();
+            int slot = in.readInt();
             Ballot ballot = PaxosBabel.ballotSerializer.deserialize(in);
-            return new AcceptOkMessage(instance, ballot);
+            return new AcceptOkMessage(slot, ballot);
         }
     };
 

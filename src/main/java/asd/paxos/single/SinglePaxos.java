@@ -14,6 +14,7 @@ import asd.paxos.Paxos;
 import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
 import asd.paxos.ProcessId;
+import asd.paxos.Proposal;
 import asd.paxos.ProposalValue;
 
 class SlotState {
@@ -112,7 +113,13 @@ public class SinglePaxos implements Paxos {
             case PREPARE_OK -> {
                 var command = cmd.getPrepareOk();
                 var state = this.tryGetSlot(command.slot());
-                state.proposer.receivePrepareOk(command.processId(), command.ballot(), command.highestAccept());
+
+                // SinglePaxos PrepareOk's send at most 1 accepted proposal
+                assert command.accepted().isEmpty() || command.accepted().size() == 1;
+
+                var accepted = command.accepted().isEmpty() ? Optional.<Proposal>empty()
+                        : Optional.of(command.accepted().get(0).proposal);
+                state.proposer.receivePrepareOk(command.processId(), command.ballot(), accepted);
             }
             case PREPARE_REQUEST -> {
                 var command = cmd.getPrepareRequest();
@@ -238,8 +245,9 @@ public class SinglePaxos implements Paxos {
     }
 
     @Override
-    public void push(PaxosCmd cmd) {
-        this.input.push(cmd);
+    public void push(PaxosCmd... commands) {
+        for (var cmd : commands)
+            this.input.push(cmd);
         this.execute();
     }
 

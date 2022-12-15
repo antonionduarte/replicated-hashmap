@@ -1,7 +1,7 @@
 package asd.paxos.multi;
 
 import java.util.ArrayList;
-import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -15,6 +15,7 @@ import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
+import asd.paxos.ProposalSlot;
 
 public class Acceptor {
     private static final Logger logger = LogManager.getLogger(Acceptor.class);
@@ -48,10 +49,13 @@ public class Acceptor {
             return;
         }
 
-        var proposal = Optional.ofNullable(this.accepted.get(slot));
+        var accepted = this.getProposalSlotsStartingAt(slot);
+
         this.promise = ballot;
-        this.queue.push(PaxosCmd.newLeader(processId, new ArrayList<>()));
-        this.queue.push(PaxosCmd.prepareOk(processId, ballot, proposal, slot));
+        this.queue.push(
+                PaxosCmd.newLeader(processId, new ArrayList<>()),
+                PaxosCmd.prepareOk(slot, processId, ballot, accepted));
+
         logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
         PaxosLog.log("send-prepare-ok",
                 "slot", slot,
@@ -71,11 +75,20 @@ public class Acceptor {
 
         this.promise = proposal.ballot;
         this.accepted.put(slot, proposal);
-        this.queue.push(PaxosCmd.acceptOk(processId, promise, slot));
+        this.queue.push(PaxosCmd.acceptOk(slot, processId, promise));
+
         logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
         PaxosLog.log("send-accept-ok",
                 "slot", slot,
                 "proposer", processId,
                 "ballot", proposal.ballot);
+    }
+
+    private List<ProposalSlot> getProposalSlotsStartingAt(int slot) {
+        var slots = new ArrayList<ProposalSlot>();
+        var view = this.accepted.tailMap(slot, true);
+        for (var entry : view.entrySet())
+            slots.add(new ProposalSlot(entry.getKey(), entry.getValue()));
+        return slots;
     }
 }

@@ -14,6 +14,7 @@ import asd.paxos.Ballot;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
 import asd.paxos.Proposal;
+import asd.paxos.ProposalSlot;
 import io.netty.buffer.ByteBuf;
 import pt.unl.fct.di.novasys.network.ISerializer;
 import pt.unl.fct.di.novasys.network.data.Host;
@@ -66,6 +67,21 @@ public class PaxosBabel {
             var processId = processIdSerializer.deserialize(in);
             var number = in.readLong();
             return new Ballot(processId, number);
+        }
+    };
+
+    public static final ISerializer<ProposalSlot> proposalSlotSerializer = new ISerializer<ProposalSlot>() {
+        @Override
+        public void serialize(ProposalSlot msg, ByteBuf buf) throws IOException {
+            buf.writeInt(msg.slot);
+            proposalSerializer.serialize(msg.proposal, buf);
+        }
+
+        @Override
+        public ProposalSlot deserialize(ByteBuf buf) throws IOException {
+            var slot = buf.readInt();
+            var proposal = proposalSerializer.deserialize(buf);
+            return new ProposalSlot(slot, proposal);
         }
     };
 

@@ -83,7 +83,7 @@ class Proposer {
         logger.debug("Proposing value {}", value);
         this.proposalValue = value;
         this.acceptors.forEach(acceptor -> {
-            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.currentBallot, this.slot));
+            this.queue.push(PaxosCmd.prepareRequest(this.slot, acceptor, this.currentBallot));
         });
         this.queue.push(PaxosCmd.setupTimer(this.slot, this.currentTimerId, this.majorityTimeout));
     }
@@ -146,7 +146,7 @@ class Proposer {
             this.currentPhase = Phase.ACCEPT;
             this.currentOks.clear();
             this.acceptors.forEach(acceptor -> {
-                this.queue.push(PaxosCmd.acceptRequest(acceptor, sentProposal, this.slot));
+                this.queue.push(PaxosCmd.acceptRequest(this.slot, acceptor, sentProposal));
             });
         }
     }
@@ -186,7 +186,7 @@ class Proposer {
             this.currentPhase = Phase.DECIDED;
             this.currentOks.clear();
             this.learners.forEach(learner -> {
-                this.queue.push(PaxosCmd.learn(learner, this.proposalValue, this.slot));
+                this.queue.push(PaxosCmd.learn(this.slot, learner, this.proposalValue));
             });
         }
     }
@@ -211,7 +211,7 @@ class Proposer {
         this.proposalBallot = new Ballot();
         this.currentOks.clear();
         this.acceptors.forEach(acceptor -> {
-            this.queue.push(PaxosCmd.prepareRequest(acceptor, this.currentBallot, this.slot));
+            this.queue.push(PaxosCmd.prepareRequest(this.slot, acceptor, this.currentBallot));
         });
         this.queue.push(PaxosCmd.setupTimer(this.slot, this.currentTimerId, this.getRandomisedMajorityTimeout()));
     }

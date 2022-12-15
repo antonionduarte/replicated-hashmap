@@ -14,6 +14,11 @@ public class CommandQueue {
         this.queue.add(command);
     }
 
+    public void push(PaxosCmd... commands) {
+        for (var command : commands)
+            this.queue.add(command);
+    }
+
     public PaxosCmd pop() {
         assert !this.isEmpty();
         return this.queue.remove();

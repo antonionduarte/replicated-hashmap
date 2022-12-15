@@ -14,6 +14,7 @@ import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
+import asd.paxos.ProposalSlot;
 
 class Acceptor {
     private static final Logger logger = LogManager.getLogger(Acceptor.class);
@@ -50,8 +51,9 @@ class Acceptor {
             return;
         }
 
+        var accepted = this.accepted.stream().map(p -> new ProposalSlot(this.slot, p)).toList();
         this.promise = ballot;
-        this.queue.push(PaxosCmd.prepareOk(processId, ballot, this.accepted, this.slot));
+        this.queue.push(PaxosCmd.prepareOk(this.slot, processId, ballot, accepted));
         logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
         PaxosLog.log("send-prepare-ok",
                 "proposer", processId,
@@ -70,7 +72,7 @@ class Acceptor {
 
         this.promise = proposal.ballot;
         this.accepted = Optional.of(proposal);
-        this.queue.push(PaxosCmd.acceptOk(processId, promise, this.slot));
+        this.queue.push(PaxosCmd.acceptOk(this.slot, processId, promise));
         logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
         PaxosLog.log("send-accept-ok",
                 "proposer", processId,

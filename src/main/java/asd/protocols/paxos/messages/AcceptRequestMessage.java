@@ -15,7 +15,7 @@ import pt.unl.fct.di.novasys.network.ISerializer;
 public class AcceptRequestMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID + 2;
 
-    public final int instance;
+    public final int slot;
     public final List<ProcessId> membership;
     public final Proposal proposal;
 
@@ -25,7 +25,7 @@ public class AcceptRequestMessage extends ProtoMessage {
         assert membership.stream().allMatch(p -> p != null);
         assert proposal != null;
 
-        this.instance = instance;
+        this.slot = instance;
         this.membership = membership;
         this.proposal = proposal;
     }
@@ -33,7 +33,7 @@ public class AcceptRequestMessage extends ProtoMessage {
     public static final ISerializer<AcceptRequestMessage> serializer = new ISerializer<AcceptRequestMessage>() {
         @Override
         public void serialize(AcceptRequestMessage acceptRequestMessage, ByteBuf out) throws IOException {
-            out.writeInt(acceptRequestMessage.instance);
+            out.writeInt(acceptRequestMessage.slot);
             out.writeInt(acceptRequestMessage.membership.size());
             for (var p : acceptRequestMessage.membership)
                 PaxosBabel.processIdSerializer.serialize(p, out);

@@ -47,8 +47,9 @@ public class MultiPaxos implements Paxos {
     }
 
     @Override
-    public void push(PaxosCmd cmd) {
-        this.input.push(cmd);
+    public void push(PaxosCmd... commands) {
+        for (var cmd : commands)
+            this.input.push(cmd);
         this.execute();
     }
 
@@ -105,8 +106,11 @@ public class MultiPaxos implements Paxos {
             }
             case PREPARE_OK -> {
                 var command = cmd.getPrepareOk();
-                this.proposer.onPrepareOk(command.slot(), command.processId(), command.ballot(),
-                        command.highestAccept());
+                this.proposer.onPrepareOk(
+                        command.slot(),
+                        command.processId(),
+                        command.ballot(),
+                        command.accepted());
             }
             case PREPARE_REQUEST -> {
                 var command = cmd.getPrepareRequest();

@@ -15,14 +15,14 @@ import pt.unl.fct.di.novasys.network.ISerializer;
 public class PrepareRequestMessage extends ProtoMessage {
     public static final short ID = PaxosProtocol.ID + 4;
 
-    public final int instance;
+    public final int slot;
     public final List<ProcessId> membership;
     public final Ballot ballot;
 
-    public PrepareRequestMessage(int instance, List<ProcessId> membership, Ballot ballot) {
+    public PrepareRequestMessage(int slot, List<ProcessId> membership, Ballot ballot) {
         super(ID);
 
-        this.instance = instance;
+        this.slot = slot;
         this.membership = membership;
         this.ballot = ballot;
     }
@@ -30,7 +30,7 @@ public class PrepareRequestMessage extends ProtoMessage {
     public static final ISerializer<PrepareRequestMessage> serializer = new ISerializer<PrepareRequestMessage>() {
         @Override
         public void serialize(PrepareRequestMessage prepareRequestMessage, ByteBuf out) throws IOException {
-            out.writeInt(prepareRequestMessage.instance);
+            out.writeInt(prepareRequestMessage.slot);
             out.writeInt(prepareRequestMessage.membership.size());
             for (var p : prepareRequestMessage.membership)
                 PaxosBabel.processIdSerializer.serialize(p, out);
@@ -39,13 +39,13 @@ public class PrepareRequestMessage extends ProtoMessage {
 
         @Override
         public PrepareRequestMessage deserialize(ByteBuf in) throws IOException {
-            int instance = in.readInt();
+            int slot = in.readInt();
             int membershipSize = in.readInt();
             List<ProcessId> membership = new ArrayList<>(membershipSize);
             for (int i = 0; i < membershipSize; i++)
                 membership.add(PaxosBabel.processIdSerializer.deserialize(in));
             Ballot ballot = PaxosBabel.ballotSerializer.deserialize(in);
-            return new PrepareRequestMessage(instance, membership, ballot);
+            return new PrepareRequestMessage(slot, membership, ballot);
         }
     };
 
