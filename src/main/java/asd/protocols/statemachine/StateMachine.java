@@ -4,9 +4,10 @@ import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
 import asd.protocols.agreement.notifications.LeaderChanged;
-import asd.protocols.agreement.requests.AddReplicaRequest;
+import asd.protocols.agreement.requests.MemberAddRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
-import asd.protocols.agreement.requests.RemoveReplicaRequest;
+import asd.protocols.agreement.requests.MemberRemoveRequest;
+import asd.protocols.agreement.requests.MembershipUnchangedRequest;
 import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
@@ -17,12 +18,11 @@ import asd.protocols.statemachine.commands.BatchHash;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;
 import asd.protocols.statemachine.commands.OrderedCommand;
-import asd.protocols.statemachine.messages.OrderBatch;
+import asd.protocols.statemachine.messages.OrderCommand;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
 import asd.protocols.statemachine.notifications.ExecuteNotification;
-import asd.protocols.statemachine.notifications.UnchangedConfigurationNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
@@ -99,6 +99,7 @@ public class StateMachine extends GenericProtocol {
 	private final Queue<Host> joiningReplicas;
 
 	/// Command Queueing
+	// commandQueue is a queue of commands that are waiting to be executed.
 	// commandQueueTimer is -1 if no active timer.
 	// after the timer fires, a proposal is made for the first missing instance.
 	private final CommandQueue commandQueue;
@@ -172,12 +173,12 @@ public class StateMachine extends GenericProtocol {
 		// registerChannelEventHandler(channelId, ..., this::uponMsgFail);
 
 		/*--------------------- Register Message Serializers ---------------------- */
-		registerMessageSerializer(channelId, OrderBatch.ID, OrderBatch.serializer);
+		registerMessageSerializer(channelId, OrderCommand.ID, OrderCommand.serializer);
 		registerMessageSerializer(channelId, SystemJoin.ID, SystemJoin.serializer);
 		registerMessageSerializer(channelId, SystemJoinReply.ID, SystemJoinReply.serializer);
 
 		/*--------------------- Register Message Handlers ----------------------------- */
-		registerMessageHandler(channelId, OrderBatch.ID, this::uponOrderBatch);
+		registerMessageHandler(channelId, OrderCommand.ID, this::uponOrderCommand);
 		registerMessageHandler(channelId, SystemJoin.ID, this::uponSystemJoin);
 		registerMessageHandler(channelId, SystemJoinReply.ID, this::uponSystemJoinReply);
 
@@ -262,6 +263,7 @@ public class StateMachine extends GenericProtocol {
 			case BATCH -> {
 				var batch = command.getBatch();
 				this.leaderSentBatches.remove(batch.hash);
+				logger.debug("Executing batch {} with size {}", batch.hash, batch.operations.length);
 
 				for (var operation : batch.operations) {
 					if (!this.executedOperations.contains(operation.operationId)) {
@@ -271,59 +273,77 @@ public class StateMachine extends GenericProtocol {
 					} else {
 						logger.warn("Skipping operation {} as it has already been executed", operation.operationId);
 					}
-
-					var unchangedNotification = new UnchangedConfigurationNotification(instance);
-					this.triggerNotification(unchangedNotification);
 				}
+				this.notifyMembershipUnchanged(instance);
 			}
 			case JOIN -> {
 				var join = command.getJoin();
-				var request = new AddReplicaRequest(instance, join.host);
-				this.sendRequest(request, Agreement.ID);
+
 				this.membership.add(join.host);
 				openConnection(join.host);
 
 				if (this.joiningReplicas.contains(join.host)) {
 					sendRequest(new CurrentStateRequest(instance), HashApp.PROTO_ID);
-				} else {
-					var notification = new UnchangedConfigurationNotification(instance);
-					this.triggerNotification(notification);
 				}
+				this.notifyMemberAdded(instance, join.host);
 			}
 			case LEAVE -> {
 				var leave = command.getLeave();
-				if (this.membership.remove(leave.host)) {
-					var request = new RemoveReplicaRequest(instance, leave.host);
-					this.sendRequest(request, Agreement.ID);
-				} else {
-					var notification = new UnchangedConfigurationNotification(instance);
-					this.triggerNotification(notification);
-				}
+				if (this.membership.remove(leave.host))
+					this.notifyMemberRemoved(instance, leave.host);
+				else
+					this.notifyMembershipUnchanged(instance);
 			}
 			case NOOP -> {
-				var notification = new UnchangedConfigurationNotification(instance);
-				this.triggerNotification(notification);
+				this.notifyMembershipUnchanged(instance);
 			}
 		}
 	}
 
-	private void sendBatchToLeader(Batch batch) {
-		if (this.leader.isPresent() && !this.isLeader()) {
-			logger.debug("Forwarding batch with size: {}", batch.operations.length);
-			var message = new OrderBatch(batch);
-			var entry = new SentBatchEntry(Instant.now(), batch);
-			this.leaderSentBatches.put(batch.hash, entry);
-			this.sendMessage(message, this.leader.get());
+	private void proposeCommand(Command command) {
+		assert this.state == State.ACTIVE;
+		assert this.leader.isEmpty() || this.isLeader();
+
+		if (command.getKind() == Command.Kind.BATCH) {
+			var batch = command.getBatch();
+			logger.debug("Ordering batch {} with size {}", batch.hash, batch.operations.length);
+		}
+
+		var request = new ProposeRequest(command.toBytes());
+		this.sendRequest(request, Agreement.ID);
+	}
+
+	private void sendCommandToLeader(Command command) {
+		assert this.state == State.ACTIVE;
+
+		if (this.leader.isEmpty() || this.isLeader()) {
+			this.proposeCommand(command);
 		} else {
-			logger.debug("Proposing batch with size: {}", batch.operations.length);
-			var request = new ProposeRequest(batch.toBytes());
-			this.sendRequest(request, Agreement.ID);
+			var message = new OrderCommand(command);
+			var leader = this.leader.get();
+			this.sendMessage(message, leader);
 		}
 	}
 
-	private void buildAndDispatchBatch() {
+	private void finalizeBatch() {
 		var batch = this.batchBuilder.build();
-		this.sendBatchToLeader(batch);
+		logger.debug("Building batch with size: {}", batch.operations.length);
+		this.sendCommandToLeader(batch);
+	}
+
+	private void appendOperationToBatch(Operation operation) {
+		assert this.state == State.ACTIVE;
+
+		this.batchBuilder.append(operation);
+		if (this.batchBuildTimer == -1) {
+			if (this.batchBuildTimeout.isZero()) {
+				this.finalizeBatch();
+			} else {
+				var timer = new BatchBuildTimer();
+				var timeout = this.batchBuildTimeout.toMillis();
+				this.batchBuildTimer = this.setupTimer(timer, timeout);
+			}
+		}
 	}
 
 	private boolean isLeader() {
@@ -331,8 +351,22 @@ public class StateMachine extends GenericProtocol {
 	}
 
 	private void proposeNoop() {
-		var command = Command.noop().toBytes();
-		var notification = new ProposeRequest(command);
+		var command = Command.noop();
+		this.proposeCommand(command);
+	}
+
+	private void notifyMemberAdded(int slot, Host host) {
+		var notification = new MemberAddRequest(slot, host);
+		this.sendRequest(notification, Agreement.ID);
+	}
+
+	private void notifyMemberRemoved(int slot, Host host) {
+		var notification = new MemberRemoveRequest(slot, host);
+		this.sendRequest(notification, Agreement.ID);
+	}
+
+	private void notifyMembershipUnchanged(int slot) {
+		var notification = new MembershipUnchangedRequest(slot);
 		this.sendRequest(notification, Agreement.ID);
 	}
 
@@ -352,14 +386,7 @@ public class StateMachine extends GenericProtocol {
 				logger.debug("Received order request while active, adding to batch builder, size: "
 						+ batchBuilder.size());
 				var operation = new Operation(request.getOperationId(), request.getOperation());
-				this.batchBuilder.append(operation);
-				if (this.batchBuildTimer == -1) {
-					if (this.batchBuildTimeout.isZero())
-						this.buildAndDispatchBatch();
-					else
-						this.batchBuildTimer = this.setupTimer(new BatchBuildTimer(),
-								this.batchBuildTimeout.toMillis());
-				}
+				this.appendOperationToBatch(operation);
 			}
 		}
 	}
@@ -393,34 +420,15 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponLeaderChanged(LeaderChanged notification, short sourceProto) {
 		logger.debug("Received leader changed notification: {}", notification);
-		if (!this.leader.isPresent() || !this.leader.get().equals(notification.leader)) {
-			// If we are changing to a different leader
-
-			logger.info("Leader changed to: {}", notification.leader);
-			this.leader = Optional.of(notification.leader);
-			var batches = this.leaderSentBatches.values().stream().map(SentBatchEntry::batch).toList();
-			this.leaderSentBatches.clear();
-
-			for (var batch : batches)
-				this.sendBatchToLeader(batch);
-		}
-
-		for (var data : notification.commands) {
-			var command = Command.fromBytes(data);
-			if (command.getKind() != Command.Kind.BATCH)
-				continue; // TODO: We are dropping every other command, is this ok?
-			this.sendBatchToLeader(command.getBatch());
-		}
+		logger.info("Leader changed to: {}", notification.leader);
+		this.leader = Optional.of(notification.leader);
+		for (var cmd : notification.commands)
+			this.sendCommandToLeader(Command.fromBytes(cmd));
 	}
 
 	/*--------------------------------- Messages ---------------------------------------- */
-	private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
-		// If a message fails to be sent, for whatever reason, log the message and the
-		// reason
-		logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
-	}
 
-	private void uponOrderBatch(OrderBatch message, Host sender, short sourceProto, int channelId) {
+	private void uponOrderCommand(OrderCommand message, Host sender, short sourceProto, int channelId) {
 		if (this.state != State.ACTIVE) {
 			logger.warn("Received order batch while not active, ignoring");
 			return;
@@ -434,8 +442,7 @@ public class StateMachine extends GenericProtocol {
 			return;
 		}
 		logger.debug("Received order batch from replica: {}", sender);
-		var request = new ProposeRequest(message.batch.toBytes());
-		this.sendRequest(request, Agreement.ID);
+		this.proposeCommand(message.command);
 	}
 
 	private void uponSystemJoin(SystemJoin systemJoin, Host sender, short sourceProto, int channelId) {
@@ -449,7 +456,7 @@ public class StateMachine extends GenericProtocol {
 		}
 		joiningReplicas.add(sender);
 		var command = Command.join(sender);
-		sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
+		this.proposeCommand(command);
 	}
 
 	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short sourceProto, int channelId) {
@@ -476,10 +483,7 @@ public class StateMachine extends GenericProtocol {
 		this.state = State.ACTIVE;
 	}
 
-	/*
-	 * --------------------------------- TCPChannel Events
-	 * ----------------------------
-	 */
+	/* -------------------------- TCPChannel Events -------------------------- */
 	private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
 		logger.info("Connection to {} is up", event.getNode());
 		retriesPerPeer.remove(event.getNode());
@@ -518,7 +522,7 @@ public class StateMachine extends GenericProtocol {
 						var command = Command.leave(event.getNode());
 						// TODO not sure how to make only one replica propose this, maybe just deal with
 						// it
-						sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
+						// sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
 					}
 				}
 			}
@@ -551,7 +555,7 @@ public class StateMachine extends GenericProtocol {
 	private void uponBatchBuild(BatchBuildTimer timer, long timerId) {
 		assert this.batchBuildTimer == timerId;
 		this.batchBuildTimer = -1;
-		this.buildAndDispatchBatch();
+		this.finalizeBatch();
 	}
 
 	private void uponOrderBatchTimer(OrderBatchTimer timer, long timerId) {

@@ -48,6 +48,7 @@ public class SinglePaxos implements Paxos {
     private final PaxosConfig config;
     private final Configurations configurations;
     private final CommandQueue input;
+    private final CommandQueue preprocess;
     private final CommandQueue output;
     private final TreeMap<Integer, SlotState> slots;
     private final ArrayDeque<ProposalValue> proposalQueue;
@@ -58,6 +59,7 @@ public class SinglePaxos implements Paxos {
         this.config = config;
         this.configurations = new Configurations();
         this.input = new CommandQueue();
+        this.preprocess = new CommandQueue();
         this.output = new CommandQueue();
         this.slots = new TreeMap<>();
         this.proposalQueue = new ArrayDeque<>();
@@ -73,7 +75,11 @@ public class SinglePaxos implements Paxos {
                 this.process(command);
             }
             this.tryPropose();
+            this.preprocess();
         }
+
+        assert this.input.isEmpty();
+        assert this.preprocess.isEmpty();
     }
 
     private void process(PaxosCmd cmd) {
@@ -93,15 +99,15 @@ public class SinglePaxos implements Paxos {
                 var command = cmd.getLearn();
                 var state = this.tryGetSlot(command.slot());
 
-                if (state.isDecided())
-                    return;
-
                 state.learner.onDecide(command.value());
                 state.proposer.moveToDecided();
 
-                if (state.originalProposal.isPresent())
-                    if (!command.value().equals(state.originalProposal.get()))
-                        this.proposalQueue.addFirst(state.originalProposal.get());
+                if (state.originalProposal.isPresent()) {
+                    var original = state.originalProposal.get();
+                    state.originalProposal = Optional.empty();
+                    if (!command.value().equals(original))
+                        this.proposalQueue.addFirst(original);
+                }
             }
             case PREPARE_OK -> {
                 var command = cmd.getPrepareOk();
@@ -147,6 +153,50 @@ public class SinglePaxos implements Paxos {
         }
     }
 
+    private void preprocess() {
+        while (!this.preprocess.isEmpty()) {
+            var command = this.preprocess.pop();
+            switch (command.getKind()) {
+                case ACCEPT_OK -> {
+                    var cmd = command.getAcceptOk();
+                    if (cmd.processId().equals(this.id))
+                        this.input.push(command);
+                    else
+                        this.output.push(command);
+                }
+                case ACCEPT_REQUEST -> {
+                    var cmd = command.getAcceptRequest();
+                    if (cmd.processId().equals(this.id))
+                        this.input.push(command);
+                    else
+                        this.output.push(command);
+                }
+                case LEARN -> {
+                    var cmd = command.getLearn();
+                    if (cmd.processId().equals(this.id))
+                        this.input.push(command);
+                    else
+                        this.output.push(command);
+                }
+                case PREPARE_OK -> {
+                    var cmd = command.getPrepareOk();
+                    if (cmd.processId().equals(this.id))
+                        this.input.push(command);
+                    else
+                        this.output.push(command);
+                }
+                case PREPARE_REQUEST -> {
+                    var cmd = command.getPrepareRequest();
+                    if (cmd.processId().equals(this.id))
+                        this.input.push(command);
+                    else
+                        this.output.push(command);
+                }
+                default -> this.output.push(command);
+            }
+        }
+    }
+
     private void tryPropose() {
         while (this.slots.containsKey(this.currentSlot) && this.slots.get(this.currentSlot).isDecided())
             this.currentSlot += 1;
@@ -181,7 +231,7 @@ public class SinglePaxos implements Paxos {
             return null;
 
         var config = PaxosConfig.builder(this.config).withMembership(membership).build();
-        state = new SlotState(slot, this.id, this.output, config);
+        state = new SlotState(slot, this.id, this.preprocess, config);
 
         this.slots.put(slot, state);
         return state;
@@ -203,8 +253,18 @@ public class SinglePaxos implements Paxos {
         return this.output.pop();
     }
 
+    @Override
     public Membership membership(int slot) {
         return this.configurations.get(slot);
+    }
+
+    @Override
+    public void printDebug() {
+        var state = this.tryGetSlot(this.currentSlot);
+        logger.debug("Paxos: currSlot={} queue={} state[currSlot]={}",
+                this.currentSlot, this.proposalQueue.size(), state);
+        if (state != null)
+            logger.debug("can propose: {}", state.proposer.canPropose());
     }
 
 }

@@ -46,19 +46,24 @@ class Learner {
         throw new IllegalStateException("Should not happen");
     }
 
-    public void onDecide(int slot, ProposalValue value) {
+    public void onLearn(int slot, ProposalValue value) {
         var current = this.values.get(slot);
+        PaxosLog.log("learned",
+                "slot", slot,
+                "value", value);
         if (current == null) {
-            PaxosLog.log("learned", "value", value);
+            PaxosLog.log("decided",
+                    "slot", slot,
+                    "value", value);
             logger.debug("Decided on value {}", value);
             this.values.put(slot, value);
             this.queue.push(PaxosCmd.decide(slot, value));
         } else if (!current.equals(value)) {
-            PaxosLog.log("decision-conflict");
+            PaxosLog.log("decision-conflict", "slot", slot);
             throw new IllegalStateException("Two different values were decided");
         } else {
             logger.debug("Ignoring duplicate decide");
-            PaxosLog.log("learn-duplicate");
+            PaxosLog.log("learn-duplicate", "slot", slot);
         }
     }
 }

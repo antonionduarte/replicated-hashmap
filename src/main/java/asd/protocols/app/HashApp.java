@@ -79,7 +79,8 @@ public class HashApp extends GenericProtocol {
 		/*-------------------- Register Message Handlers -------------------------- */
 		registerMessageHandler(channelId, RequestMessage.MSG_ID, this::uponRequestMessage);
 		// We never receive a ResponseMessage, so just register the failure handler.
-		registerMessageHandler(channelId, ResponseMessage.MSG_ID, null, this::uponMsgFail);
+		// registerMessageHandler(channelId, ResponseMessage.MSG_ID, null,
+		// this::uponMsgFail);
 
 		/*-------------------- Register Execute Notification Handler --------------- */
 		subscribeNotification(ExecuteNotification.NOTIFICATION_ID, this::uponExecuteNotification);
@@ -162,7 +163,7 @@ public class HashApp extends GenericProtocol {
 
 			cumulativeHash = appendOpToHash(cumulativeHash, op.getData());
 
-			logger.debug("Executing: " + op);
+			logger.debug("Executing: " + op + " with opId " + not.getOpId());
 			// Execute if it is a write operation
 			if (op.getOpType() == RequestMessage.WRITE) {
 				data.put(op.getKey(), op.getData());

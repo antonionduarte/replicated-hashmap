@@ -1,6 +1,7 @@
 package asd.paxos;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -9,33 +10,141 @@ public class PaxosCmd {
         NEW_LEADER, DECIDE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_UNCHANGED, MEMBERSHIP_DISCOVERED, PROPOSE, PREPARE_REQUEST, PREPARE_OK, ACCEPT_REQUEST, ACCEPT_OK, LEARN, SETUP_TIMER, CANCEL_TIMER, TIMER_EXPIRED,
     }
 
+    /**
+     * A value has been decided.
+     * 
+     * @apiNote Origin: Paxos.
+     *          This is only issued once per slot.
+     *          The user is responsible for issuing one of the Membership commands
+     *          to ensure that the membership for the next slot is known.
+     *          Not doing so will cause the system to stall.
+     * @see MemberAdded MemberAdded MemberRemoved MembershipUnchanged
+     * 
+     * @param slot
+     *            The slot at which the value has been decided.
+     * @param value
+     *            The decided value.
+     */
     public static record Decide(int slot, ProposalValue value) {
     }
 
-    public static record NewLeader(ProcessId leader, List<byte[]> commands) {
+    /**
+     * A new leader has been elected. All pending commands should be forwarded to
+     * this new leader. If the leader is the local process then the pending list is
+     * empty as the commands don't need to be forwarded.
+     * 
+     * @apiNote Origin: Paxos
+     * 
+     * @param leader
+     *            The id of the new leader.
+     * @param pending
+     *            The list of pending commands that should be proposed to the new
+     *            leader.
+     * 
+     */
+    public static record NewLeader(ProcessId leader, List<byte[]> pending) {
     }
 
+    /**
+     * A new member has been added to the membership at the given slot.
+     * The new member will start participating at slot `slot`.
+     * It is invalid to issue this command after a Propose command for the same
+     * slot.
+     * 
+     * @apiNote Origin: User
+     * 
+     * @param slot
+     *            The slot at which the member starts participating.
+     * @param processId
+     *            The id of the new member.
+     */
     public static record MemberAdded(int slot, ProcessId processId) {
     }
 
+    /**
+     * A member has been removed from the membership at the given slot.
+     * 
+     * @apiNote Origin: User
+     * 
+     * @param slot
+     *            The slot at which the member stops participating.
+     */
     public static record MemberRemoved(int slot, ProcessId processId) {
     }
 
+    /**
+     * The membership has not changed at the given slot.
+     * 
+     * @apiNote Origin: User
+     * 
+     * @param slot
+     *            The slot at which the membership has not changed.
+     */
     public static record MembershipUnchanged(int slot) {
     }
 
+    /**
+     * The membership has been discovered at the given slot.
+     * 
+     * @apiNote Origin: User
+     * 
+     * @param slot
+     *            The slot at which the membership has been discovered.
+     * @param membership
+     *            The membership.
+     * 
+     */
     public static record MembershipDiscovered(int slot, Membership membership) {
     }
 
+    /**
+     * A command has been proposed.
+     * 
+     * @apiNote: Origin: User
+     * 
+     * @param command
+     *            The command to be proposed.
+     */
     public static record Propose(byte[] command) {
     }
 
+    /**
+     * A prepare request should be delivered to another process.
+     * 
+     * @apiNote Origin: Paxos/User.
+     *          If this command is issued by the user then `processId` must be the
+     *          id of the local process.
+     * 
+     * @param processId
+     *            The id of the process to which the prepare request should be
+     *            delivered.
+     * @param ballot
+     *            The ballot of the prepare request.
+     * 
+     */
     public static record PrepareRequest(
             ProcessId processId,
             Ballot ballot,
             int slot) {
     }
 
+    /**
+     * A prepare ok should be delivered.
+     * 
+     * @apiNote Origin: Paxos/User.
+     *          If this command is issued by the user then `processId` must be the
+     *          id of the local process.
+     * 
+     * @param processId
+     *            The id of the process to which the prepare ok should be delivered.
+     * @param ballot
+     *            The ballot of the prepare ok.
+     * @param highestAccept
+     *            The highest accepted proposal.
+     * @param slot
+     *            The slot of the prepare ok.
+     * 
+     */
     public static record PrepareOk(
             ProcessId processId,
             Ballot ballot,
@@ -43,35 +152,112 @@ public class PaxosCmd {
             int slot) {
     }
 
+    /**
+     * An accept request should be delivered.
+     * 
+     * @apiNote Origin: Paxos/User.
+     *          If this command is issued by the user then `processId` must be the
+     *          id of the local process.
+     * 
+     * @param processId
+     *            The id of the process to which the accept request should be
+     *            delivered.
+     * @param proposal
+     *            The proposal of the accept request.
+     * @param slot
+     *            The slot of the accept request.
+     */
     public static record AcceptRequest(
             ProcessId processId,
             Proposal proposal,
             int slot) {
     }
 
+    /**
+     * An accept ok should be delivered.
+     * 
+     * @apiNote Origin: Paxos/User.
+     *          If this command is issued by the user then `processId` must be the
+     *          id of
+     *          the local process.
+     * 
+     * @param processId
+     *            The id of the process to which the accept ok should be delivered.
+     * @param ballot
+     *            The ballot of the accept ok.
+     * @param slot
+     *            The slot of the accept ok.
+     */
     public static record AcceptOk(
             ProcessId processId,
             Ballot ballot,
             int slot) {
     }
 
+    /**
+     * A learn should be delivered.
+     * 
+     * @apiNote Origin: Paxos/User.
+     *          If this command is issued by the user then `processId` must be the
+     *          id of
+     *          the local process.
+     * 
+     * @param processId
+     *            The id of the process to which the learn should be delivered.
+     * @param value
+     *            The value of the learn.
+     * @param slot
+     *            The slot of the learn.
+     */
     public static record Learn(
             ProcessId processId,
             ProposalValue value,
             int slot) {
     }
 
+    /**
+     * A oneshot timer should be setup.
+     * 
+     * @apiNote Origin: Paxos
+     * 
+     * @param slot
+     *            The slot for which the timer should be setup.
+     * @param timerId
+     *            The id of the timer.
+     * @param timeout
+     *            The timeout of the timer.
+     */
     public static record SetupTimer(
             int slot,
             int timerId,
             Duration timeout) {
     }
 
+    /**
+     * A timer should be cancelled.
+     * 
+     * @apiNote Origin: Paxos
+     * 
+     * @param slot
+     *            The slot for which the timer should be cancelled.
+     * @param timerId
+     *            The id of the timer.
+     */
     public static record CancelTimer(
             int slot,
             int timerId) {
     }
 
+    /**
+     * A timer has expired.
+     * 
+     * @apiNote Origin: User
+     * 
+     * @param slot
+     *            The slot for which the timer has expired.
+     * @param timerId
+     *            The id of the timer.
+     */
     public static record TimerExpired(
             int slot,
             int timerId) {
@@ -153,8 +339,12 @@ public class PaxosCmd {
         return new PaxosCmd(Kind.DECIDE, new Decide(slot, value));
     }
 
-    public static PaxosCmd newLeader(ProcessId leader, List<byte[]> commands) {
-        return new PaxosCmd(Kind.NEW_LEADER, new NewLeader(leader, commands));
+    public static PaxosCmd newLeader(ProcessId leader) {
+        return new PaxosCmd(Kind.NEW_LEADER, new NewLeader(leader, List.of()));
+    }
+
+    public static PaxosCmd newLeader(ProcessId leader, List<byte[]> pending) {
+        return new PaxosCmd(Kind.NEW_LEADER, new NewLeader(leader, new ArrayList<>(pending)));
     }
 
     public static PaxosCmd memberAdded(int slot, ProcessId processId) {

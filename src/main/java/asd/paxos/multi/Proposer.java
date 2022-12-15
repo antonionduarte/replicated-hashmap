@@ -33,6 +33,7 @@ public class Proposer {
     private State state;
     private Ballot ballot;
     private Ballot proposalBallot;
+    private ProposalValue originalProposal;
     private ProposalValue proposal;
     private int currslot;
     private Set<ProcessId> curracceptors;
@@ -49,6 +50,7 @@ public class Proposer {
         this.state = State.WAITING_PROPOSAL;
         this.ballot = new Ballot(this.id, 0);
         this.proposalBallot = new Ballot();
+        this.originalProposal = null;
         this.proposal = null;
         this.currslot = config.initialSlot;
         this.curracceptors = Set.copyOf(config.membership.acceptors);
@@ -61,10 +63,15 @@ public class Proposer {
         return this.state == State.WAITING_PROPOSAL && this.configurations.contains(this.currslot);
     }
 
+    public int getCurrentSlot() {
+        return this.currslot;
+    }
+
     public void propose(ProposalValue value) {
         assert this.canPropose();
 
         this.proposalBallot = new Ballot();
+        this.originalProposal = value;
         this.proposal = value;
         this.curracceptors = Set.copyOf(this.configurations.get(this.currslot).acceptors);
         this.curroks.clear();
@@ -72,11 +79,17 @@ public class Proposer {
 
         // logger.info("Proposing with lead = {}", this.hasLead);
         if (!this.hasLead) {
+            PaxosLog.log("send-prepare-request",
+                    "slot", this.currslot,
+                    "lead", this.hasLead);
             this.state = State.WAITING_PREPARE_OK;
             this.curracceptors.forEach(acceptor -> {
                 this.queue.push(PaxosCmd.prepareRequest(acceptor, this.ballot, this.currslot));
             });
         } else {
+            PaxosLog.log("send-accept-request",
+                    "slot", this.currslot,
+                    "leader", this.hasLead);
             // TODO: Check if this.ballot is correct
             this.state = State.WAITING_ACCEPT_OK;
             this.curracceptors.forEach(acceptor -> {
@@ -102,6 +115,7 @@ public class Proposer {
         }
 
         PaxosLog.log("received-prepare-ok",
+                "slot", this.currslot,
                 "from", processId,
                 "ballot", ballot,
                 "highestAccept", highestAccept.orElse(null));
@@ -156,6 +170,7 @@ public class Proposer {
             this.state = State.WAITING_PROPOSAL;
             this.proposalBallot = new Ballot();
             this.currslot += 1;
+            this.originalProposal = null;
             this.proposal = null;
             this.curracceptors = Set.of();
             this.curroks.clear();
@@ -166,6 +181,7 @@ public class Proposer {
         assert this.currtimer == timerId;
 
         PaxosLog.log("majority-timeout",
+                "slot", this.currslot,
                 "state", this.state,
                 "ballot", this.ballot);
 
@@ -179,15 +195,18 @@ public class Proposer {
         this.setupTimer(this.getRandomisedMajorityTimeout());
     }
 
-    public Optional<ProposalValue> preempt(boolean isLearn) {
-        // logger.info("Preempted");
-        var prop = Optional.ofNullable(this.proposal);
+    public void onLearn(int slot, ProposalValue value) {
+
+    }
+
+    public Optional<ProposalValue> preempt() {
+        var prop = Optional.ofNullable(this.originalProposal);
+        this.originalProposal = null;
         this.proposal = null;
         this.curracceptors = Set.of();
         this.state = State.WAITING_PROPOSAL;
         this.proposalBallot = new Ballot();
-        if (!isLearn)
-            this.hasLead = false;
+        this.hasLead = false;
         this.cancelTimer();
         return prop;
     }

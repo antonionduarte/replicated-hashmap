@@ -32,6 +32,7 @@ class Proposer {
     private final int quorumSize;
     private final Duration majorityTimeout;
 
+    private int highestObservedSeqN;
     private Ballot currentBallot;
     private Ballot proposalBallot;
     // Can be null if we don't have a proposal for this instance yet.
@@ -49,6 +50,7 @@ class Proposer {
         this.quorumSize = (this.acceptors.size() / 2) + 1;
         this.majorityTimeout = config.majorityTimeout;
 
+        this.highestObservedSeqN = 0;
         this.currentBallot = new Ballot(id, 0);
         this.proposalBallot = new Ballot();
         this.proposalValue = null;
@@ -62,9 +64,16 @@ class Proposer {
     }
 
     public boolean canPropose() {
+        logger.debug("phase={}, proposalValue={}", this.currentPhase, this.proposalValue);
         return this.currentPhase == Phase.PREPARE && this.proposalValue == null;
     }
 
+    /**
+     * Set the proposal value for this instance. This can only be called once.
+     * 
+     * @param value
+     *            The value to propose.
+     */
     public void propose(ProposalValue value) {
         if (this.proposalValue != null)
             throw new IllegalStateException("Already have a proposal");
@@ -77,6 +86,16 @@ class Proposer {
             this.queue.push(PaxosCmd.prepareRequest(acceptor, this.currentBallot, this.slot));
         });
         this.queue.push(PaxosCmd.setupTimer(this.slot, this.currentTimerId, this.majorityTimeout));
+    }
+
+    /**
+     * Called when a new sequence number is observed.
+     * The proposer can use this to
+     * 
+     * @param seqn
+     */
+    public void observeSequenceNumber(int seqn) {
+        this.highestObservedSeqN = Math.max(this.highestObservedSeqN, seqn);
     }
 
     public void receivePrepareOk(ProcessId processId, Ballot ballot, Optional<Proposal> highestAccept) {

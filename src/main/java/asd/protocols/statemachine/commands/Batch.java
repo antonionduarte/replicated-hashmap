@@ -3,6 +3,7 @@ package asd.protocols.statemachine.commands;
 import asd.protocols.statemachine.Operation;
 
 import java.io.*;
+import java.util.Arrays;
 import java.util.UUID;
 
 public class Batch extends Command {
@@ -52,5 +53,26 @@ public class Batch extends Command {
             throw new RuntimeException(ex);
         }
         return baos.toByteArray();
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + Arrays.hashCode(operations);
+        result = prime * result + ((hash == null) ? 0 : hash.hashCode());
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null)
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        Batch other = (Batch) obj;
+        return this.hash.equals(other.hash);
     }
 }

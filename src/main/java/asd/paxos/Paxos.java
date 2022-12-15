@@ -10,4 +10,7 @@ public interface Paxos {
         PaxosCmd pop();
 
         Membership membership(int slot);
+
+        // Debugging is fun
+        void printDebug();
 }

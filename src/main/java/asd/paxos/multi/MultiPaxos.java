@@ -1,6 +1,7 @@
 package asd.paxos.multi;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -13,7 +14,6 @@ import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
-import asd.protocols.PaxosBabel;
 
 public class MultiPaxos implements Paxos {
     private static final Logger logger = LogManager.getLogger(MultiPaxos.class);
@@ -76,6 +76,9 @@ public class MultiPaxos implements Paxos {
             this.tryPropose();
             this.preprocess();
         }
+
+        assert this.input.isEmpty();
+        assert this.preprocess.isEmpty();
     }
 
     private void process(PaxosCmd cmd) {
@@ -91,13 +94,14 @@ public class MultiPaxos implements Paxos {
             case CANCEL_TIMER -> throw new IllegalArgumentException("Unexpected CANCEL_TIMER");
             case LEARN -> {
                 var command = cmd.getLearn();
-                if (this.learner.hasDecided(command.slot()))
-                    return;
 
-                this.learner.onDecide(command.slot(), command.value());
-                var proposal = this.proposer.preempt(true);
-                if (proposal.isPresent() && !proposal.get().equals(command.value()))
-                    this.proposalQueue.addFirst(proposal.get());
+                if (this.proposer.getCurrentSlot() == command.slot()) {
+                    var proposal = this.proposer.preempt();
+                    if (proposal.isPresent() && !proposal.get().equals(command.value()))
+                        this.proposalQueue.addFirst(proposal.get());
+                }
+
+                this.learner.onLearn(command.slot(), command.value());
             }
             case PREPARE_OK -> {
                 var command = cmd.getPrepareOk();
@@ -122,6 +126,7 @@ public class MultiPaxos implements Paxos {
                 this.configurations.set(command.slot() + 1, this.configurations.get(command.slot()));
             }
             case MEMBER_ADDED -> {
+                // TODO: This slot is wrong, off by one
                 var command = cmd.getMemberAdded();
                 var membership = this.configurations.get(command.slot());
                 this.configurations.set(command.slot() + 1, membership.with(command.processId()));
@@ -133,6 +138,9 @@ public class MultiPaxos implements Paxos {
             }
             case PROPOSE -> {
                 var command = cmd.getPropose();
+                if (!this.configurations.contains(this.proposer.getCurrentSlot())) {
+                    logger.warn("Propose issued before membership is known. See `PaxosCmd::Decide` for details.");
+                }
                 this.proposalQueue.add(new ProposalValue(command.command()));
                 this.tryPropose();
             }
@@ -169,14 +177,15 @@ public class MultiPaxos implements Paxos {
                 }
                 case NEW_LEADER -> {
                     var cmd = command.getNewLeader();
+                    var pending = new ArrayList<byte[]>(cmd.pending());
                     if (!cmd.leader().equals(this.id)) {
-                        var val = this.proposer.preempt(false);
+                        var val = this.proposer.preempt();
                         if (val.isPresent())
-                            cmd.commands().add(val.get().data);
+                            pending.add(val.get().data);
                         while (!this.proposalQueue.isEmpty())
-                            cmd.commands().add(this.proposalQueue.pop().data);
+                            pending.add(this.proposalQueue.pop().data);
                     }
-                    this.output.push(command);
+                    this.output.push(PaxosCmd.newLeader(cmd.leader(), pending));
                 }
                 case PREPARE_OK -> {
                     var cmd = command.getPrepareOk();
@@ -203,6 +212,10 @@ public class MultiPaxos implements Paxos {
 
         var value = this.proposalQueue.pop();
         this.proposer.propose(value);
+    }
+
+    @Override
+    public void printDebug() {
     }
 
 }
