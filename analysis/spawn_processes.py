@@ -8,14 +8,6 @@ BASE_STATEMACHINE_PORT = 3000
 EXPERIMENTS_FOLDER = "analysis/experiments/"
 
 
-# TODO for you sweet Diogo:
-# 1) YCSB working 
-# 2) Waiting before processes finish running before cleaning docker and moving to next experiment
-# 3) Capture the logs from stdout YCSB. Additional issue: docker doesn't to work very well with log4j to stdout.
-
-# this function spits out the logs in JSON to the output/{number_clients}_clients folder
-
-# could as well be output/{number_clients}.json
 def process_log(filename: str, logs: list[str]):
     f = open(filename, "w")
     for line in logs:
