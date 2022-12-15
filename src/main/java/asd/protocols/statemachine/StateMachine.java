@@ -442,7 +442,9 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("CurrentStateReply with no joining replica");
 			return;
 		}
-		sendMessage(new SystemJoinReply(List.copyOf(this.membership), reply.getInstance() + 1, reply.getState()),
+		// TODO: This is wrong, we need to send the membership as it was when the Join
+		// command was executed
+		sendMessage(new SystemJoinReply(List.copyOf(this.membership), reply.getInstance(), reply.getState()),
 				joiningReplica);
 	}
 
@@ -528,17 +530,15 @@ public class StateMachine extends GenericProtocol {
 		logger.info("Joining system at instance {} with membership {}", systemJoinReply.instance,
 				systemJoinReply.membership);
 
-		this.membership = new HashSet<>(systemJoinReply.membership);
-		this.membership.forEach(this::openConnection);
-
-		this.commandQueue.setLastExecutedInstance(systemJoinReply.instance - 1);
-
 		var installRequest = new InstallStateRequest(systemJoinReply.state);
 		this.sendRequest(installRequest, HashApp.PROTO_ID);
 
-		logger.info("System join reply instance = {}, membership = {}", systemJoinReply.instance,
-				systemJoinReply.membership);
-		var joinNotification = new JoinedNotification(systemJoinReply.instance, systemJoinReply.membership);
+		this.membership = new HashSet<>(systemJoinReply.membership);
+		this.membership.forEach(this::openConnection);
+		this.membership.add(this.self);
+		this.commandQueue.setLastExecutedInstance(systemJoinReply.instance);
+
+		var joinNotification = new JoinedNotification(systemJoinReply.instance + 1, List.copyOf(this.membership));
 		this.triggerNotification(joinNotification);
 		this.state = State.ACTIVE;
 	}
@@ -649,6 +649,7 @@ public class StateMachine extends GenericProtocol {
 		for (var member : membership)
 			this.sendMessage(message, member);
 
+		logger.info("GC Membership: {}", this.membership);
 		Optional<Integer> min = Optional.empty();
 		for (var member : this.membership) {
 			if (!this.gcPerPeer.containsKey(member))
@@ -656,7 +657,7 @@ public class StateMachine extends GenericProtocol {
 			if (min.isEmpty() || min.get() > this.gcPerPeer.get(member))
 				min = Optional.of(this.gcPerPeer.get(member));
 		}
-		if (min.isEmpty() || this.commandQueue.getLastExecutedInstance() > min.get())
+		if (min.isEmpty() || min.get() > this.commandQueue.getLastExecutedInstance())
 			min = Optional.of(this.commandQueue.getLastExecutedInstance());
 
 		logger.info("Garbage collecting up to {}", min.get());

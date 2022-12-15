@@ -2,6 +2,7 @@ package asd.paxos;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -9,9 +10,9 @@ public class PaxosConfig {
     public static class Builder {
         private int initialSlot = 0;
         private Duration timeout = Duration.ofSeconds(1);
-        private List<ProcessId> proposers = Collections.emptyList();
-        private List<ProcessId> acceptors = Collections.emptyList();
-        private List<ProcessId> learners = Collections.emptyList();
+        private Collection<ProcessId> proposers = Collections.emptyList();
+        private Collection<ProcessId> acceptors = Collections.emptyList();
+        private Collection<ProcessId> learners = Collections.emptyList();
 
         public Builder withInitialSlot(int initialSlot) {
             this.initialSlot = initialSlot;
@@ -23,25 +24,25 @@ public class PaxosConfig {
             return this;
         }
 
-        public Builder withProposers(List<ProcessId> proposers) {
+        public Builder withProposers(Collection<ProcessId> proposers) {
             this.proposers = proposers;
             return this;
         }
 
-        public Builder withAcceptors(List<ProcessId> acceptors) {
+        public Builder withAcceptors(Collection<ProcessId> acceptors) {
             this.acceptors = acceptors;
             return this;
         }
 
-        public Builder withLearners(List<ProcessId> learners) {
+        public Builder withLearners(Collection<ProcessId> learners) {
             this.learners = learners;
             return this;
         }
 
         public Builder withMembership(Membership membership) {
-            this.proposers = new ArrayList<>(membership.proposers);
-            this.acceptors = new ArrayList<>(membership.acceptors);
-            this.learners = new ArrayList<>(membership.learners);
+            this.proposers = List.copyOf(membership.proposers);
+            this.acceptors = List.copyOf(membership.acceptors);
+            this.learners = List.copyOf(membership.learners);
             return this;
         }
 
@@ -57,9 +58,9 @@ public class PaxosConfig {
     private PaxosConfig(
             int initialSlot,
             Duration majorityTimeout,
-            List<ProcessId> proposers,
-            List<ProcessId> acceptors,
-            List<ProcessId> learners) {
+            Collection<ProcessId> proposers,
+            Collection<ProcessId> acceptors,
+            Collection<ProcessId> learners) {
         this.initialSlot = initialSlot;
         this.majorityTimeout = majorityTimeout;
         this.membership = new Membership(proposers, acceptors, learners);

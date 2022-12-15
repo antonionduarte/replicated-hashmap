@@ -57,7 +57,7 @@ public class Acceptor {
                 PaxosCmd.newLeader(processId, new ArrayList<>()),
                 PaxosCmd.prepareOk(slot, processId, ballot, accepted));
 
-        logger.debug("Sending prepare ok to {} with ballot {}", processId, ballot);
+        logger.trace("Sending prepare ok to {} with ballot {}", processId, ballot);
         PaxosLog.log("send-prepare-ok",
                 "slot", slot,
                 "proposer", processId,
@@ -80,7 +80,7 @@ public class Acceptor {
         this.accepted.put(slot, proposal);
         this.queue.push(PaxosCmd.acceptOk(slot, processId, promise));
 
-        logger.debug("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
+        logger.trace("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
         PaxosLog.log("send-accept-ok",
                 "slot", slot,
                 "proposer", processId,

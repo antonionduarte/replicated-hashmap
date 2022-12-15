@@ -14,8 +14,15 @@ public class SystemJoinReply extends ProtoMessage {
 
     public static final short ID = StateMachine.ID + 2;
 
+    // Membership of the system at time slot that the new member was added.
+    // Does not include the new member.
     public final List<Host> membership;
+
+    // Slot at which the new member was added.
+    // The member starts participating at the next slot.
     public final int instance;
+
+    // The application state at the time slot that the new member was added.
     public final byte[] state;
 
     public SystemJoinReply(List<Host> membership, int instance, byte[] state) {

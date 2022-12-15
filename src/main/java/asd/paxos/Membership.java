@@ -1,31 +1,35 @@
 package asd.paxos;
 
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class Membership {
-    public final List<ProcessId> proposers;
-    public final List<ProcessId> acceptors;
-    public final List<ProcessId> learners;
+    public final Set<ProcessId> proposers;
+    public final Set<ProcessId> acceptors;
+    public final Set<ProcessId> learners;
 
-    public Membership(List<ProcessId> members) {
+    public Membership(Collection<ProcessId> members) {
         this(members, members, members);
     }
 
-    public Membership(List<ProcessId> proposers, List<ProcessId> acceptors, List<ProcessId> learners) {
-        this.proposers = Collections.unmodifiableList(List.copyOf(proposers));
-        this.acceptors = Collections.unmodifiableList(List.copyOf(acceptors));
-        this.learners = Collections.unmodifiableList(List.copyOf(learners));
+    public Membership(
+            Collection<ProcessId> proposers,
+            Collection<ProcessId> acceptors,
+            Collection<ProcessId> learners) {
+        this.proposers = Collections.unmodifiableSet(Set.copyOf(proposers));
+        this.acceptors = Collections.unmodifiableSet(Set.copyOf(acceptors));
+        this.learners = Collections.unmodifiableSet(Set.copyOf(learners));
     }
 
     public Membership with(ProcessId processId) {
         var membership = this.without(processId);
-        var proposers = new ArrayList<>(membership.proposers);
+        var proposers = new HashSet<>(membership.proposers);
         proposers.add(processId);
-        var acceptors = new ArrayList<>(membership.acceptors);
+        var acceptors = new HashSet<>(membership.acceptors);
         acceptors.add(processId);
-        var learners = new ArrayList<>(membership.learners);
+        var learners = new HashSet<>(membership.learners);
         learners.add(processId);
         return new Membership(proposers, acceptors, learners);
     }
@@ -78,4 +82,5 @@ public class Membership {
             return false;
         return true;
     }
+
 }

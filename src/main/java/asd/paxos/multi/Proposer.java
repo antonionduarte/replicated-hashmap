@@ -107,11 +107,11 @@ public class Proposer {
 
     public void onPrepareOk(int slot, ProcessId processId, Ballot ballot, List<ProposalSlot> accepted) {
         if (this.currslot != slot) {
-            logger.debug("Received prepare-ok for slot {} in state {}", slot, this.state);
+            logger.trace("Received prepare-ok for slot {} in state {}", slot, this.state);
             return;
         }
         if (this.state != State.WAITING_PREPARE_OK) {
-            logger.debug("Received prepare-ok in state {}", this.state);
+            logger.trace("Received prepare-ok in state {}", this.state);
             return;
         }
         if (!this.curracceptors.contains(processId)) {
@@ -179,11 +179,11 @@ public class Proposer {
 
     public void onAcceptOk(int slot, ProcessId processId, Ballot ballot) {
         if (this.currslot != slot || !this.ballot.equals(ballot)) {
-            logger.debug("Received accept-ok for slot {} in state {}", slot, this.state);
+            logger.trace("Received accept-ok for slot {} in state {}", slot, this.state);
             return;
         }
         if (this.state != State.WAITING_ACCEPT_OK) {
-            logger.debug("Received accept-ok in state {}", this.state);
+            logger.trace("Received accept-ok in state {}", this.state);
             return;
         }
         if (!this.curracceptors.contains(processId)) {
