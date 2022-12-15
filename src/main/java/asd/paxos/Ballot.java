@@ -91,6 +91,6 @@ public class Ballot implements Comparable<Ballot> {
 
     @Override
     public String toString() {
-        return "Ballot [processId=" + processId + ", sequenceNumber=" + sequenceNumber + "]";
+        return processId + ":" + sequenceNumber;
     }
 }

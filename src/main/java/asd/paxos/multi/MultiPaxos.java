@@ -14,9 +14,12 @@ import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 public class MultiPaxos implements Paxos {
     private static final Logger logger = LogManager.getLogger(MultiPaxos.class);
+    private static final SLogger slogger = SLog.logger(MultiPaxos.class);
 
     private final ProcessId id;
     private final PaxosConfig config;
@@ -146,6 +149,7 @@ public class MultiPaxos implements Paxos {
                     logger.warn("Propose issued before membership is known. See `PaxosCmd::Decide` for details.");
                 }
                 this.proposalQueue.add(new ProposalValue(command.command()));
+                slogger.log("queued", "size", this.proposalQueue.size());
                 this.tryPropose();
             }
             case DECIDE -> throw new IllegalArgumentException("Unexpected DECIDE");
@@ -187,8 +191,9 @@ public class MultiPaxos implements Paxos {
                         if (val.isPresent())
                             pending.add(val.get().data);
                         while (!this.proposalQueue.isEmpty())
-                            pending.add(this.proposalQueue.pop().data);
+                            pending.add(this.proposalQueue.remove().data);
                     }
+                    slogger.log("leader", "pending", pending.size());
                     this.output.push(PaxosCmd.newLeader(cmd.leader(), pending));
                 }
                 case PREPARE_OK -> {
@@ -214,7 +219,7 @@ public class MultiPaxos implements Paxos {
         if (!this.proposer.canPropose() || this.proposalQueue.isEmpty())
             return;
 
-        var value = this.proposalQueue.pop();
+        var value = this.proposalQueue.remove();
         this.proposer.propose(value);
     }
 

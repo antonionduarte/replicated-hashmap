@@ -1,19 +1,20 @@
 package asd.paxos.multi;
 
-import asd.paxos.CommandQueue;
-import asd.paxos.PaxosCmd;
-import asd.paxos.PaxosLog;
-
 import java.util.TreeMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import asd.paxos.CommandQueue;
+import asd.paxos.PaxosCmd;
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 class Learner {
     private static final Logger logger = LogManager.getLogger(Learner.class);
+    private static final SLogger slogger = SLog.logger(Learner.class);
 
     private final ProcessId id;
     private final CommandQueue queue;
@@ -48,22 +49,22 @@ class Learner {
 
     public void onLearn(int slot, ProposalValue value) {
         var current = this.values.get(slot);
-        PaxosLog.log("learned",
+        slogger.log("learned",
                 "slot", slot,
                 "value", value);
         if (current == null) {
-            PaxosLog.log("decided",
+            slogger.log("decided",
                     "slot", slot,
                     "value", value);
             logger.debug("Decided on value {}", value);
             this.values.put(slot, value);
             this.queue.push(PaxosCmd.decide(slot, value));
         } else if (!current.equals(value)) {
-            PaxosLog.log("decision-conflict", "slot", slot);
+            slogger.log("conflict", "slot", slot);
             throw new IllegalStateException("Two different values were decided");
         } else {
             logger.debug("Ignoring duplicate decide");
-            PaxosLog.log("learn-duplicate", "slot", slot);
+            slogger.log("learn-duplicate", "slot", slot);
         }
     }
 }

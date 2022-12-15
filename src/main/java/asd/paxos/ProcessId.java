@@ -42,7 +42,7 @@ public class ProcessId implements Comparable<ProcessId> {
 
     @Override
     public String toString() {
-        return "ProcessId [id=" + id + "]";
+        return String.valueOf(id);
     }
 
 }

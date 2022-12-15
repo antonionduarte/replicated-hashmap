@@ -1,5 +1,6 @@
 package asd.paxos;
 
+import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.time.Clock;
 import java.util.Stack;
@@ -24,7 +25,7 @@ public class PaxosLog {
         if (PaxosLog.outputStream != null)
             throw new IllegalStateException("Cannot initialize twice");
         try {
-            PaxosLog.outputStream = new java.io.FileOutputStream(filename);
+            PaxosLog.outputStream = new BufferedOutputStream(new java.io.FileOutputStream(filename));
         } catch (java.io.FileNotFoundException e) {
             throw new RuntimeException(e);
         }
@@ -69,8 +70,9 @@ public class PaxosLog {
         try {
             var now = clock.instant();
             var nano_now = now.getEpochSecond() * 1_000_000_000 + ((long) now.getNano());
-            var header = String.format("%d process=%s instance=%d\t",
-                    nano_now, prettyProcessId(context.processId), context.instance);
+            PaxosLog.outputStream.write(String.valueOf(nano_now).getBytes());
+            var header = String.format(" process=%s instance=%d\t",
+                    prettyProcessId(context.processId), context.instance);
             PaxosLog.outputStream.write(header.getBytes());
             PaxosLog.outputStream.write(s.getBytes());
             PaxosLog.outputStream.write("\n".getBytes());

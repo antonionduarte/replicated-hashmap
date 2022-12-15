@@ -14,6 +14,7 @@ import org.apache.logging.log4j.Logger;
 import asd.protocols.app.HashApp;
 import asd.protocols.paxos.PaxosProtocol;
 import asd.protocols.statemachine.StateMachine;
+import asd.slog.SLog;
 import pt.unl.fct.di.novasys.babel.core.Babel;
 
 public class PaxosMain {
@@ -42,6 +43,13 @@ public class PaxosMain {
         // IP of that interface and create a property "address=ip" to be used later by
         // the channels.
         addInterfaceIp(props);
+
+        var enableSlog = Boolean.parseBoolean(props.getProperty("slog"));
+        if (enableSlog) {
+            var port = props.getProperty("statemachine_port");
+            SLog.init("slog/" + port + ".log",
+                    "host", port);
+        }
 
         var paxos = new PaxosProtocol(props);
         var ipaxos = new InteractivePaxos();

@@ -308,7 +308,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		this.registerSharedChannel(channelId);
 		this.id = PaxosBabel.hostToProcessId(notification.getMyself());
 		if (this.enableLog)
-			PaxosLog.init("paxos-" + notification.getMyself().getPort() + ".log");
+			PaxosLog.init("paxoslog/paxos-" + notification.getMyself().getPort() + ".log");
 
 		/*--------------------- Register Message Serializers ---------------------- */
 		this.registerMessageSerializer(channelId, AcceptOkMessage.ID, AcceptOkMessage.serializer);

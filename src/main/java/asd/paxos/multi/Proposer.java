@@ -15,11 +15,12 @@ import asd.paxos.CommandQueue;
 import asd.paxos.Configurations;
 import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
-import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
 import asd.paxos.ProposalSlot;
 import asd.paxos.ProposalValue;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 public class Proposer {
     private static enum State {
@@ -27,6 +28,7 @@ public class Proposer {
     }
 
     private static final Logger logger = LogManager.getLogger(Proposer.class);
+    private static final SLogger slogger = SLog.logger(Proposer.class);
 
     private final ProcessId id;
     private final CommandQueue queue;
@@ -80,7 +82,7 @@ public class Proposer {
         logger.debug("Acceptors for slot {}: {}", this.currslot, this.curracceptors);
 
         if (!this.hasLead) {
-            PaxosLog.log("send-prepare-request",
+            slogger.log("send-prepare-request",
                     "slot", this.currslot,
                     "lead", this.hasLead);
             this.state = State.WAITING_PREPARE_OK;
@@ -88,9 +90,9 @@ public class Proposer {
                 this.queue.push(PaxosCmd.prepareRequest(this.currslot, acceptor, this.ballot));
             });
         } else {
-            PaxosLog.log("send-accept-request",
+            slogger.log("send-accept-request",
                     "slot", this.currslot,
-                    "leader", this.hasLead);
+                    "hasLead", this.hasLead);
             // TODO: Check if this.ballot is correct
             this.state = State.WAITING_ACCEPT_OK;
             this.activeProposalValue = this.originalProposalValue;
@@ -117,11 +119,10 @@ public class Proposer {
             return;
         }
 
-        PaxosLog.log("received-prepare-ok",
+        slogger.log("received-prepare-ok",
                 "slot", this.currslot,
                 "from", processId,
-                "ballot", ballot,
-                "accepted", accepted);
+                "ballot", ballot);
 
         for (var pslot : accepted) {
             var current = this.proposals.get(pslot.slot);
@@ -210,7 +211,7 @@ public class Proposer {
     public void onTimer(int timerId) {
         assert this.currtimer == timerId;
 
-        PaxosLog.log("majority-timeout",
+        slogger.log("majority-timeout",
                 "slot", this.currslot,
                 "state", this.state,
                 "ballot", this.ballot);

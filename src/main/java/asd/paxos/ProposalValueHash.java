@@ -46,6 +46,6 @@ public class ProposalValueHash {
 
     @Override
     public String toString() {
-        return "ProposalValueHash [hash=" + Hex.encodeHexString(this.digest) + "]";
+        return Hex.encodeHexString(this.digest);
     }
 }

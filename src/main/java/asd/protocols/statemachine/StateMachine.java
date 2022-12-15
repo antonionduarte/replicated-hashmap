@@ -48,6 +48,8 @@ import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -91,6 +93,8 @@ public class StateMachine extends GenericProtocol {
 	public static final int RETRY_AFTER = 100;
 
 	private static final Logger logger = LogManager.getLogger(StateMachine.class);
+	private static final SLogger slogger = SLog.logger(StateMachine.class);
+
 	private final Host self; // My own address/port
 	private final int channelId; // ID of the created channel
 	private State state;
@@ -261,7 +265,6 @@ public class StateMachine extends GenericProtocol {
 			var contact = initialMembership.get(0);
 			openConnection(contact);
 		}
-
 	}
 
 	/*--------------------------------- Helpers ---------------------------------------- */
@@ -279,6 +282,7 @@ public class StateMachine extends GenericProtocol {
 				var batch = command.getBatch();
 				logger.debug("Executing batch {} with size {}", batch.hash, batch.operations.length);
 
+				slogger.log("execute", "hash", batch.hash);
 				for (var operation : batch.operations) {
 					if (!this.executedOperations.contains(operation.operationId)) {
 						var notification = new ExecuteNotification(operation.operationId, operation.operation);
@@ -347,6 +351,7 @@ public class StateMachine extends GenericProtocol {
 	private void finalizeBatch() {
 		var batch = this.batchBuilder.build();
 		logger.debug("Building batch with size: {}", batch.operations.length);
+		slogger.log("batch", "hash", batch.hash);
 		this.sendCommandToLeader(batch);
 	}
 
@@ -442,13 +447,21 @@ public class StateMachine extends GenericProtocol {
 		logger.info("Leader changed to: {}", notification.leader);
 		this.leader = Optional.of(notification.leader);
 
+		slogger.log("leader", "leader", notification.leader);
+
 		var forward = List.copyOf(this.leaderForwardedCommands);
 		this.leaderForwardedCommands.clear();
-		for (var cmd : forward)
+		for (var cmd : forward) {
 			this.sendCommandToLeader(cmd);
+		}
 
-		for (var cmd : notification.commands)
-			this.sendCommandToLeader(Command.fromBytes(cmd));
+		for (var cmd : notification.commands) {
+			var command = Command.fromBytes(cmd);
+			if (command.getKind() == Command.Kind.BATCH) {
+				slogger.log("forward-paxos", "hash", command.getBatch().hash);
+			}
+			this.sendCommandToLeader(command);
+		}
 	}
 
 	/*--------------------------------- Messages ---------------------------------------- */

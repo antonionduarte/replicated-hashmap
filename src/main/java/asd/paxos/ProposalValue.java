@@ -33,6 +33,6 @@ public class ProposalValue {
 
     @Override
     public String toString() {
-        return "ProposalValue [hash=" + hash + "]";
+        return hash.toString();
     }
 }

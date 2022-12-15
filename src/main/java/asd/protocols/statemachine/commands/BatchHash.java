@@ -50,6 +50,6 @@ public class BatchHash {
 
     @Override
     public String toString() {
-        return "BatchHash [digest=" + Hex.encodeHexString(this.digest) + "]";
+        return Hex.encodeHexString(this.digest);
     }
 }
