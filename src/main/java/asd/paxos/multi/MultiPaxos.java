@@ -2,6 +2,8 @@ package asd.paxos.multi;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,6 +35,8 @@ public class MultiPaxos implements Paxos {
     private final Acceptor acceptor;
     private final Learner learner;
 
+    private Optional<ProcessId> currentLeader;
+
     public MultiPaxos(ProcessId processId, PaxosConfig config) {
         this.id = processId;
         this.config = config;
@@ -43,8 +47,10 @@ public class MultiPaxos implements Paxos {
         this.proposalQueue = new ArrayDeque<>();
 
         this.proposer = new Proposer(processId, this.preprocess, config, this.configurations);
-        this.acceptor = new Acceptor(processId, this.preprocess, config);
+        this.acceptor = new Acceptor(processId, this.preprocess, this.configurations);
         this.learner = new Learner(processId, this.preprocess);
+
+        this.currentLeader = Optional.empty();
 
         this.configurations.set(config.initialSlot, config.membership);
     }
@@ -105,6 +111,15 @@ public class MultiPaxos implements Paxos {
                         this.proposalQueue.addFirst(proposal.get());
                 }
 
+                if (this.currentLeader.isEmpty()) {
+                    // If we join while there is a leader, we need to know who it is
+                    // If we don't have a leader and receive a LEARN, we can assume the sender is
+                    // the leader.
+                    assert !command.processId().equals(this.id);
+                    this.currentLeader = Optional.of(command.processId());
+                    this.output.push(PaxosCmd.newLeader(command.processId()));
+                }
+
                 this.learner.onLearn(command.slot(), command.value());
             }
             case PREPARE_OK -> {
@@ -133,7 +148,6 @@ public class MultiPaxos implements Paxos {
                 this.configurations.set(command.slot() + 1, this.configurations.get(command.slot()));
             }
             case MEMBER_ADDED -> {
-                // TODO: This slot is wrong, off by one
                 var command = cmd.getMemberAdded();
                 var membership = this.configurations.get(command.slot());
                 this.configurations.set(command.slot() + 1, membership.with(command.processId()));
@@ -145,9 +159,16 @@ public class MultiPaxos implements Paxos {
             }
             case PROPOSE -> {
                 var command = cmd.getPropose();
-                if (!this.configurations.contains(this.proposer.getCurrentSlot())) {
-                    logger.warn("Propose issued before membership is known. See `PaxosCmd::Decide` for details.");
+                if (command.stragety() == PaxosCmd.ProposeStrategy.Return && this.currentLeader.isPresent()
+                        && !this.currentLeader.get().equals(this.id)) {
+                    this.output.push(PaxosCmd.newLeader(this.currentLeader.get(), List.of(command.command())));
+                    return;
                 }
+
+                if (!this.configurations.contains(this.proposer.getCurrentSlot())) {
+                    logger.debug("Propose issued before membership is known. See `PaxosCmd::Decide` for details.");
+                }
+
                 this.proposalQueue.add(new ProposalValue(command.command()));
                 slogger.log("queued", "size", this.proposalQueue.size());
                 this.tryPropose();
@@ -195,6 +216,7 @@ public class MultiPaxos implements Paxos {
                     }
                     slogger.log("leader", "pending", pending.size());
                     this.output.push(PaxosCmd.newLeader(cmd.leader(), pending));
+                    this.currentLeader = Optional.of(cmd.leader());
                 }
                 case PREPARE_OK -> {
                     var cmd = command.getPrepareOk();
@@ -215,6 +237,18 @@ public class MultiPaxos implements Paxos {
         }
     }
 
+    @Override
+    public void gc(int slot) {
+        var upto = Math.max(0, slot - 1);
+        this.configurations.removeUpTo(upto);
+        this.acceptor.removeUpTo(upto);
+        this.learner.removeUpTo(upto);
+    }
+
+    @Override
+    public void printDebug() {
+    }
+
     private void tryPropose() {
         if (!this.proposer.canPropose() || this.proposalQueue.isEmpty())
             return;
@@ -222,9 +256,4 @@ public class MultiPaxos implements Paxos {
         var value = this.proposalQueue.remove();
         this.proposer.propose(value);
     }
-
-    @Override
-    public void printDebug() {
-    }
-
 }

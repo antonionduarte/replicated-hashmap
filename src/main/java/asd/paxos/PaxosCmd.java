@@ -3,11 +3,22 @@ package asd.paxos;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public class PaxosCmd {
     public static enum Kind {
         NEW_LEADER, DECIDE, MEMBER_ADDED, MEMBER_REMOVED, MEMBERSHIP_UNCHANGED, MEMBERSHIP_DISCOVERED, PROPOSE, PREPARE_REQUEST, PREPARE_OK, ACCEPT_REQUEST, ACCEPT_OK, LEARN, SETUP_TIMER, CANCEL_TIMER, TIMER_EXPIRED,
+    }
+
+    public static enum ProposeStrategy {
+        /**
+         * Return the value if the current leader is not the local process.
+         * The command is returned in a {@link NewLeader} command.
+         */
+        Return,
+        /**
+         * Attempt to take leadership if the current leader is not the local process.
+         */
+        TakeLeadership,
     }
 
     /**
@@ -34,6 +45,8 @@ public class PaxosCmd {
      * empty as the commands don't need to be forwarded.
      * 
      * @apiNote Origin: Paxos
+     *          Multiple commands may be issued for the same leader
+     *          {@link ProposeStrategy}.
      * 
      * @param leader
      *            The id of the new leader.
@@ -47,14 +60,14 @@ public class PaxosCmd {
 
     /**
      * A new member has been added to the membership at the given slot.
-     * The new member will start participating at slot `slot`.
+     * The new member will start participating at slot `slot + 1`.
      * It is invalid to issue this command after a Propose command for the same
      * slot.
      * 
      * @apiNote Origin: User
      * 
      * @param slot
-     *            The slot at which the member starts participating.
+     *            The slot at which the member was added.
      * @param processId
      *            The id of the new member.
      */
@@ -63,22 +76,24 @@ public class PaxosCmd {
 
     /**
      * A member has been removed from the membership at the given slot.
+     * The member will not participate at slot `slot + 1`.
      * 
      * @apiNote Origin: User
      * 
      * @param slot
-     *            The slot at which the member stops participating.
+     *            The slot at which the member was removed.
      */
     public static record MemberRemoved(int slot, ProcessId processId) {
     }
 
     /**
-     * The membership has not changed at the given slot.
+     * The membership has not changed at the given slot, so the membership of `slot
+     * + 1` is the same as the membership of `slot`.
      * 
      * @apiNote Origin: User
      * 
      * @param slot
-     *            The slot at which the membership has not changed.
+     *            The slot at which the command has not changed the membership.
      */
     public static record MembershipUnchanged(int slot) {
     }
@@ -105,7 +120,7 @@ public class PaxosCmd {
      * @param command
      *            The command to be proposed.
      */
-    public static record Propose(byte[] command) {
+    public static record Propose(byte[] command, ProposeStrategy stragety) {
     }
 
     /**
@@ -366,7 +381,11 @@ public class PaxosCmd {
     }
 
     public static PaxosCmd propose(byte[] command) {
-        return new PaxosCmd(Kind.PROPOSE, new Propose(command));
+        return propose(command, ProposeStrategy.Return);
+    }
+
+    public static PaxosCmd propose(byte[] command, ProposeStrategy strategy) {
+        return new PaxosCmd(Kind.PROPOSE, new Propose(command, strategy));
     }
 
     public static PaxosCmd prepareRequest(int slot, ProcessId processId, Ballot ballot) {

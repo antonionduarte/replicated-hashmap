@@ -1,11 +1,11 @@
 package asd.protocols.agreement.notifications;
 
 import asd.AsdUtils;
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoNotification;
 
 public class DecidedNotification extends ProtoNotification {
-    public static final short ID = PaxosProtocol.ID + 1;
+    public static final short ID = Agreement.ID + 1;
 
     public final int instance;
     public final byte[] operation;

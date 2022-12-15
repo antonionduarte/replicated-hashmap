@@ -1,23 +1,26 @@
 package asd.protocols.agreement.requests;
 
 import asd.AsdUtils;
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
 
 public class ProposeRequest extends ProtoRequest {
 
-    public static final short ID = PaxosProtocol.ID + 2;
+    public static final short ID = Agreement.ID + 2;
 
     public final byte[] command;
+    public final boolean takeLeadership;
 
-    public ProposeRequest(byte[] operation) {
+    public ProposeRequest(byte[] operation, boolean takeLeadership) {
         super(ID);
 
         this.command = operation;
+        this.takeLeadership = takeLeadership;
     }
 
     @Override
     public String toString() {
-        return "ProposeRequest [command=" + AsdUtils.sha256Hex(this.command) + "]";
+        return "ProposeRequest [command=" + AsdUtils.sha256Hex(this.command)
+                + ", takeLeadership=" + takeLeadership + "]";
     }
 }

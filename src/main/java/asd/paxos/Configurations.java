@@ -29,4 +29,14 @@ public class Configurations {
     public int size() {
         return this.configurations.size();
     }
+
+    /**
+     * Removes all configurations up to and including the given slot.
+     * 
+     * @param slot
+     *            The slot to remove configurations up to.
+     */
+    public void removeUpTo(int slot) {
+        this.configurations.headMap(slot).clear();
+    }
 }

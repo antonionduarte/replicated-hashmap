@@ -23,6 +23,7 @@ import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
 import asd.protocols.agreement.notifications.LeaderChanged;
+import asd.protocols.agreement.requests.GcRequest;
 import asd.protocols.agreement.requests.MemberAddRequest;
 import asd.protocols.agreement.requests.ProposeRequest;
 import asd.protocols.agreement.requests.MemberRemoveRequest;
@@ -73,6 +74,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		this.registerRequestHandler(MemberAddRequest.ID, this::onAddReplicaRequest);
 		this.registerRequestHandler(MemberRemoveRequest.ID, this::onRemoveReplicaRequest);
 		this.registerRequestHandler(MembershipUnchangedRequest.ID, this::onMembershipUnchanged);
+		this.registerRequestHandler(GcRequest.ID, this::onGcRequest);
 
 		/*--------------------- Register Notification Handlers ----------------------------- */
 		this.subscribeNotification(JoinedNotification.ID, this::onJoined);
@@ -89,7 +91,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
 	/*--------------------------------- Helpers ---------------------------------------- */
 
-	private void execute() {
+	private void execute(PaxosCmd... commands) {
+		this.paxos.push(commands);
 		while (!this.paxos.isEmpty()) {
 			var command = this.paxos.pop();
 			this.process(command);
@@ -203,8 +206,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 				PaxosLog.log("trigger-canceled-timer", "slot", timer.slot);
 				return;
 			}
-			this.paxos.push(PaxosCmd.timerExpired(timer.slot, timer.timerId));
-			this.execute();
+			this.execute(PaxosCmd.timerExpired(timer.slot, timer.timerId));
 		});
 	}
 
@@ -221,8 +223,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 			logger.trace("Received AcceptOkMessage from {} on slot {}", host, msg.slot);
 			var processId = PaxosBabel.hostToProcessId(host);
 			var slot = msg.slot;
-			this.paxos.push(PaxosCmd.acceptOk(slot, processId, msg.ballot));
-			this.execute();
+			this.execute(PaxosCmd.acceptOk(slot, processId, msg.ballot));
 		});
 	}
 
@@ -233,10 +234,9 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 			var slot = msg.slot;
 			var proposal = new Proposal(msg.proposal.ballot, msg.proposal.value);
 			var membership = new Membership(msg.membership);
-			this.paxos.push(
+			this.execute(
 					PaxosCmd.membershipDiscovered(slot, membership),
 					PaxosCmd.acceptRequest(slot, processId, proposal));
-			this.execute();
 		});
 	}
 
@@ -247,9 +247,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 			var slot = msg.slot;
 			var value = msg.value;
 			var membership = new Membership(msg.membership);
-			this.paxos.push(PaxosCmd.membershipDiscovered(slot, membership));
-			this.paxos.push(PaxosCmd.learn(slot, processId, value));
-			this.execute();
+			this.execute(PaxosCmd.membershipDiscovered(slot, membership),
+					PaxosCmd.learn(slot, processId, value));
 		});
 	}
 
@@ -258,8 +257,7 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 			logger.trace("Received prepare ok from {} for slot {}", host, msg.slot);
 			var processId = PaxosBabel.hostToProcessId(host);
 			var slot = msg.slot;
-			this.paxos.push(PaxosCmd.prepareOk(slot, processId, msg.ballot, msg.accepted));
-			this.execute();
+			this.execute(PaxosCmd.prepareOk(slot, processId, msg.ballot, msg.accepted));
 		});
 	}
 
@@ -269,9 +267,8 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 			var processId = PaxosBabel.hostToProcessId(host);
 			var slot = msg.slot;
 			var membership = new Membership(msg.membership);
-			this.paxos.push(PaxosCmd.membershipDiscovered(slot, membership));
-			this.paxos.push(PaxosCmd.prepareRequest(slot, processId, msg.ballot));
-			this.execute();
+			this.execute(PaxosCmd.membershipDiscovered(slot, membership),
+					PaxosCmd.prepareRequest(slot, processId, msg.ballot));
 		});
 	}
 
@@ -279,24 +276,29 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 
 	private void onProposeRequest(ProposeRequest request, short sourceProto) {
 		logger.trace("Received propose request: {}", request);
-		this.paxos.push(PaxosCmd.propose(request.command));
-		this.execute();
+		var strategy = request.takeLeadership ? PaxosCmd.ProposeStrategy.TakeLeadership
+				: PaxosCmd.ProposeStrategy.Return;
+		this.execute(PaxosCmd.propose(request.command, strategy));
 	}
 
 	private void onAddReplicaRequest(MemberAddRequest request, short sourceProto) {
 		logger.info("Adding replica to membership: {}", request.replica);
+		this.execute(PaxosCmd.memberAdded(request.slot, PaxosBabel.hostToProcessId(request.replica)));
 	}
 
 	private void onRemoveReplicaRequest(MemberRemoveRequest request, short sourceProto) {
 		logger.info("Removing replica from membership: {}", request.replica);
-		this.paxos.push(PaxosCmd.memberRemoved(request.slot, PaxosBabel.hostToProcessId(request.replica)));
-		this.execute();
+		this.execute(PaxosCmd.memberRemoved(request.slot, PaxosBabel.hostToProcessId(request.replica)));
 	}
 
 	private void onMembershipUnchanged(MembershipUnchangedRequest request, short sourceProto) {
 		logger.trace("Membership unchanged");
-		this.paxos.push(PaxosCmd.membershipUnchanged(request.slot));
-		this.execute();
+		this.execute(PaxosCmd.membershipUnchanged(request.slot));
+	}
+
+	private void onGcRequest(GcRequest request, short sourceProto) {
+		logger.trace("Received GC request");
+		this.paxos.gc(request.upToSlot);
 	}
 
 	/*--------------------------------- Notification Handlers ---------------------------------------- */

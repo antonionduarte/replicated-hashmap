@@ -2,12 +2,12 @@ package asd.protocols.agreement.notifications;
 
 import java.util.List;
 
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoNotification;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class JoinedNotification extends ProtoNotification {
-    public static final short ID = PaxosProtocol.ID + 2;
+    public static final short ID = Agreement.ID + 2;
 
     public final int joinSlot;
     public final List<Host> membership;

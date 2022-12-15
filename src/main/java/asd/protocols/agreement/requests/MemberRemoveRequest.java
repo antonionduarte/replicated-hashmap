@@ -1,11 +1,11 @@
 package asd.protocols.agreement.requests;
 
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class MemberRemoveRequest extends ProtoRequest {
-    public static final short ID = PaxosProtocol.ID + 3;
+    public static final short ID = Agreement.ID + 3;
 
     // The slot at which it was decided to remove the replica.
     // The replica will stop participating in the slot after this one.

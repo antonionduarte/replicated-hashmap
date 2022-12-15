@@ -30,7 +30,7 @@ public class OrderCommand extends ProtoMessage {
             var size = in.readInt();
             var data = new byte[size];
             in.readBytes(data);
-            return new OrderCommand(Command.fromBytes(data).getBatch());
+            return new OrderCommand(Command.fromBytes(data));
         }
     };
 }

@@ -267,6 +267,14 @@ public class SinglePaxos implements Paxos {
     }
 
     @Override
+    public void gc(int slot) {
+        // Leave one slot so we maintain the membership
+        var upto = Math.max(0, slot - 1);
+        this.slots.keySet().removeIf(s -> s < upto);
+        this.configurations.removeUpTo(upto);
+    }
+
+    @Override
     public void printDebug() {
         var state = this.tryGetSlot(this.currentSlot);
         logger.debug("Paxos: currSlot={} queue={} state[currSlot]={}",

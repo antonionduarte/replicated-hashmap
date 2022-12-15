@@ -1,11 +1,11 @@
 package asd.protocols.agreement.requests;
 
-import asd.protocols.paxos.PaxosProtocol;
+import asd.protocols.agreement.Agreement;
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest;
 import pt.unl.fct.di.novasys.network.data.Host;
 
 public class MemberAddRequest extends ProtoRequest {
-    public static final short ID = PaxosProtocol.ID + 1;
+    public static final short ID = Agreement.ID + 1;
 
     // The slot at which it was decided to add the replica.
     // The replica will start participating in the slot after this one.

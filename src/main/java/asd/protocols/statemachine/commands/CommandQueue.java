@@ -38,4 +38,8 @@ public class CommandQueue {
     public void setLastExecutedInstance(int instance) {
         this.lastExecutedInstance = instance;
     }
+
+    public int getLastExecutedInstance() {
+        return this.lastExecutedInstance;
+    }
 }

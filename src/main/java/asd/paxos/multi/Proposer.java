@@ -154,7 +154,8 @@ public class Proposer {
                     // In this implementation of MultiPaxos we only do one proposal at a time
                     // Since we removed the proposal for the current slot above
                     // then we can just assume that every other proposal that is in the map
-                    // has already been decided
+                    // has already been decided since we only keep the highest proposal for each
+                    // slot and we contacted a majority of acceptors
                     for (var entry : this.proposals.entrySet()) {
                         var pslot = entry.getKey();
                         var value = entry.getValue().value;

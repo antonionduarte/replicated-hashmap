@@ -2,7 +2,6 @@ package asd.paxos.multi;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.logging.log4j.LogManager;
@@ -10,8 +9,8 @@ import org.apache.logging.log4j.Logger;
 
 import asd.paxos.Ballot;
 import asd.paxos.CommandQueue;
+import asd.paxos.Configurations;
 import asd.paxos.PaxosCmd;
-import asd.paxos.PaxosConfig;
 import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
@@ -22,17 +21,17 @@ public class Acceptor {
 
     private final ProcessId id;
     private final CommandQueue queue;
+    private final Configurations configurations;
 
     private Ballot promise;
     private TreeMap<Integer, Proposal> accepted;
-    private Set<ProcessId> proposers;
 
-    public Acceptor(ProcessId id, CommandQueue queue, PaxosConfig config) {
+    public Acceptor(ProcessId id, CommandQueue queue, Configurations configurations) {
         this.id = id;
         this.queue = queue;
+        this.configurations = configurations;
         this.promise = new Ballot();
         this.accepted = new TreeMap<>();
-        this.proposers = Set.copyOf(config.membership.proposers);
     }
 
     public ProcessId getId() {
@@ -40,6 +39,8 @@ public class Acceptor {
     }
 
     public void onPrepareRequest(int slot, ProcessId processId, Ballot ballot) {
+        // NOTE: This might not be ideal for large memberships
+        var proposers = this.configurations.get(slot).proposers;
         if (!proposers.contains(processId)) {
             logger.debug("Ignoring prepare request from unknown proposer {}", processId);
             return;
@@ -64,6 +65,8 @@ public class Acceptor {
     }
 
     public void onAcceptRequest(int slot, ProcessId processId, Proposal proposal) {
+        // NOTE: This might not be ideal for large memberships
+        var proposers = this.configurations.get(slot).proposers;
         if (!proposers.contains(processId)) {
             logger.debug("Ignoring accept request from unknown proposer {}", processId);
             return;
@@ -82,6 +85,10 @@ public class Acceptor {
                 "slot", slot,
                 "proposer", processId,
                 "ballot", proposal.ballot);
+    }
+
+    public void removeUpTo(int slot) {
+        this.accepted.headMap(slot).clear();
     }
 
     private List<ProposalSlot> getProposalSlotsStartingAt(int slot) {

@@ -67,4 +67,8 @@ class Learner {
             slogger.log("learn-duplicate", "slot", slot);
         }
     }
+
+    public void removeUpTo(int slot) {
+        this.values.headMap(slot).clear();
+    }
 }

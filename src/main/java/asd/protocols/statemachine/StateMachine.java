@@ -23,6 +23,7 @@ import asd.protocols.agreement.Agreement;
 import asd.protocols.agreement.notifications.DecidedNotification;
 import asd.protocols.agreement.notifications.JoinedNotification;
 import asd.protocols.agreement.notifications.LeaderChanged;
+import asd.protocols.agreement.requests.GcRequest;
 import asd.protocols.agreement.requests.MemberAddRequest;
 import asd.protocols.agreement.requests.MemberRemoveRequest;
 import asd.protocols.agreement.requests.MembershipUnchangedRequest;
@@ -31,12 +32,12 @@ import asd.protocols.app.HashApp;
 import asd.protocols.app.requests.CurrentStateReply;
 import asd.protocols.app.requests.CurrentStateRequest;
 import asd.protocols.app.requests.InstallStateRequest;
-import asd.protocols.statemachine.commands.Batch;
 import asd.protocols.statemachine.commands.BatchBuilder;
 import asd.protocols.statemachine.commands.Command;
 import asd.protocols.statemachine.commands.CommandQueue;
 import asd.protocols.statemachine.commands.OrderedCommand;
 import asd.protocols.statemachine.messages.OrderCommand;
+import asd.protocols.statemachine.messages.SystemGc;
 import asd.protocols.statemachine.messages.SystemJoin;
 import asd.protocols.statemachine.messages.SystemJoinReply;
 import asd.protocols.statemachine.notifications.ChannelReadyNotification;
@@ -45,6 +46,7 @@ import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
+import asd.protocols.statemachine.timers.GcTimer;
 import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
@@ -82,10 +84,6 @@ public class StateMachine extends GenericProtocol {
 		JOINING, ACTIVE
 	}
 
-	// A batch sent to the leader, and the time it was sent.
-	private static record SentBatchEntry(Instant instant, Batch batch) {
-	}
-
 	// Protocol information, to register in babel
 	public static final String PROTOCOL_NAME = "StateMachine";
 	public static final short ID = 200;
@@ -98,7 +96,7 @@ public class StateMachine extends GenericProtocol {
 	private final Host self; // My own address/port
 	private final int channelId; // ID of the created channel
 	private State state;
-	private List<Host> membership;
+	private Set<Host> membership;
 
 	private final Map<Host, Integer> retriesPerPeer;
 	private final Queue<OrderRequest> pendingRequests;
@@ -109,6 +107,10 @@ public class StateMachine extends GenericProtocol {
 	private final Set<Command> leaderForwardedCommands;
 	private final Duration leaderTimeoutDuration;
 	private Instant leaderLastMessage;
+
+	/// GC tracking
+	// Keeps track of the last executed slot per peer.
+	private final HashMap<Host, Integer> gcPerPeer;
 
 	/// JoinRequest tracking
 	// Keeps track of any peers that sent us a join request so we can send them a
@@ -154,6 +156,9 @@ public class StateMachine extends GenericProtocol {
 		this.leaderTimeoutDuration = Duration.parse(props.getProperty("statemachine_leader_timeout"));
 		this.leaderLastMessage = Instant.now();
 
+		/// GC tracking
+		this.gcPerPeer = new HashMap<>();
+
 		/// Membership tracking
 		/// JoinRequest tracking
 		this.joiningReplicas = new LinkedList<>();
@@ -195,11 +200,13 @@ public class StateMachine extends GenericProtocol {
 		registerMessageSerializer(channelId, OrderCommand.ID, OrderCommand.serializer);
 		registerMessageSerializer(channelId, SystemJoin.ID, SystemJoin.serializer);
 		registerMessageSerializer(channelId, SystemJoinReply.ID, SystemJoinReply.serializer);
+		registerMessageSerializer(channelId, SystemGc.ID, SystemGc.serializer);
 
 		/*--------------------- Register Message Handlers ----------------------------- */
 		registerMessageHandler(channelId, OrderCommand.ID, this::uponOrderCommand);
 		registerMessageHandler(channelId, SystemJoin.ID, this::uponSystemJoin);
 		registerMessageHandler(channelId, SystemJoinReply.ID, this::uponSystemJoinReply);
+		registerMessageHandler(channelId, SystemGc.ID, this::uponSystemGc);
 
 		/*--------------------- Register Request Handlers ----------------------------- */
 		registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
@@ -217,6 +224,7 @@ public class StateMachine extends GenericProtocol {
 		registerTimerHandler(OrderBatchTimer.ID, this::uponOrderBatchTimer);
 		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
 		registerTimerHandler(ProposeNoopTimer.ID, this::uponProposeNoop);
+		registerTimerHandler(GcTimer.ID, this::uponGcTimer);
 	}
 
 	@Override
@@ -230,6 +238,7 @@ public class StateMachine extends GenericProtocol {
 				this.leaderTimeoutDuration.toMillis() + leaderTimeoutRandomness);
 
 		setupPeriodicTimer(new ProposeNoopTimer(), 0, this.leaderTimeoutDuration.toMillis() / 3);
+		setupPeriodicTimer(new GcTimer(), 5000, 5000);
 
 		String host = props.getProperty("statemachine_initial_membership");
 		System.out.println("MEMBERSHIP = " + host);
@@ -251,16 +260,16 @@ public class StateMachine extends GenericProtocol {
 			logger.info("Starting in ACTIVE as I am part of initial membership");
 			// I'm part of the initial membership, so I'm assuming the system is
 			// bootstrapping
-			membership = new LinkedList<>(initialMembership);
+			membership = new HashSet<>(initialMembership);
 			membership.forEach(this::openConnection);
-			triggerNotification(new JoinedNotification(0, membership));
+			triggerNotification(new JoinedNotification(0, List.copyOf(membership)));
 		} else {
 			state = State.JOINING;
 			logger.info("Starting in JOINING as I am not part of initial membership");
 			// You have to do something to join the system and know which instance you
 			// joined
 			// (and copy the state of that instance)
-			membership = new LinkedList<>();
+			membership = new HashSet<>();
 			potentialContacts = initialMembership;
 			var contact = initialMembership.get(0);
 			openConnection(contact);
@@ -307,6 +316,13 @@ public class StateMachine extends GenericProtocol {
 			}
 			case LEAVE -> {
 				var leave = command.getLeave();
+
+				if (leave.host.equals(self)) {
+					logger.info("I have been removed from the membership, shutting down");
+					System.exit(0);
+				}
+
+				this.gcPerPeer.remove(leave.host);
 				if (this.membership.remove(leave.host))
 					this.notifyMemberRemoved(instance, leave.host);
 				else
@@ -327,7 +343,7 @@ public class StateMachine extends GenericProtocol {
 			logger.debug("Ordering batch {} with size {}", batch.hash, batch.operations.length);
 		}
 
-		var request = new ProposeRequest(command.toBytes());
+		var request = new ProposeRequest(command.toBytes(), false);
 		this.sendRequest(request, Agreement.ID);
 	}
 
@@ -374,9 +390,12 @@ public class StateMachine extends GenericProtocol {
 		return this.leader.isPresent() && this.leader.get().equals(this.self);
 	}
 
-	private void proposeNoop() {
+	private void proposeNoopLeadership() {
+		assert this.state == State.ACTIVE;
+
 		var command = Command.noop();
-		this.proposeCommand(command);
+		var request = new ProposeRequest(command.toBytes(), true);
+		this.sendRequest(request, Agreement.ID);
 	}
 
 	private void notifyMemberAdded(int slot, Host host) {
@@ -423,7 +442,8 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("CurrentStateReply with no joining replica");
 			return;
 		}
-		sendMessage(new SystemJoinReply(membership, reply.getInstance() + 1, reply.getState()), joiningReplica);
+		sendMessage(new SystemJoinReply(List.copyOf(this.membership), reply.getInstance() + 1, reply.getState()),
+				joiningReplica);
 	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */
@@ -444,15 +464,17 @@ public class StateMachine extends GenericProtocol {
 
 	private void uponLeaderChanged(LeaderChanged notification, short sourceProto) {
 		logger.debug("Received leader changed notification: {}", notification);
-		logger.info("Leader changed to: {}", notification.leader);
-		this.leader = Optional.of(notification.leader);
-
 		slogger.log("leader", "leader", notification.leader);
 
-		var forward = List.copyOf(this.leaderForwardedCommands);
-		this.leaderForwardedCommands.clear();
-		for (var cmd : forward) {
-			this.sendCommandToLeader(cmd);
+		if (!(this.leader.isPresent() && this.leader.get().equals(notification.leader))) {
+			logger.info("Leader changed to: {}", notification.leader);
+			this.leader = Optional.of(notification.leader);
+
+			var forward = List.copyOf(this.leaderForwardedCommands);
+			this.leaderForwardedCommands.clear();
+			for (var cmd : forward) {
+				this.sendCommandToLeader(cmd);
+			}
 		}
 
 		for (var cmd : notification.commands) {
@@ -494,7 +516,7 @@ public class StateMachine extends GenericProtocol {
 		}
 		joiningReplicas.add(sender);
 		var command = Command.join(sender);
-		this.proposeCommand(command);
+		this.sendCommandToLeader(command);
 	}
 
 	private void uponSystemJoinReply(SystemJoinReply systemJoinReply, Host host, short sourceProto, int channelId) {
@@ -506,7 +528,7 @@ public class StateMachine extends GenericProtocol {
 		logger.info("Joining system at instance {} with membership {}", systemJoinReply.instance,
 				systemJoinReply.membership);
 
-		this.membership = new LinkedList<>(systemJoinReply.membership);
+		this.membership = new HashSet<>(systemJoinReply.membership);
 		this.membership.forEach(this::openConnection);
 
 		this.commandQueue.setLastExecutedInstance(systemJoinReply.instance - 1);
@@ -519,6 +541,12 @@ public class StateMachine extends GenericProtocol {
 		var joinNotification = new JoinedNotification(systemJoinReply.instance, systemJoinReply.membership);
 		this.triggerNotification(joinNotification);
 		this.state = State.ACTIVE;
+	}
+
+	private void uponSystemGc(SystemGc systemGc, Host host, short sourceProto, int channelId) {
+		if (!this.membership.contains(host))
+			return;
+		this.gcPerPeer.put(host, systemGc.latestExecutedSlot);
 	}
 
 	/* -------------------------- TCPChannel Events -------------------------- */
@@ -558,9 +586,7 @@ public class StateMachine extends GenericProtocol {
 				case ACTIVE -> {
 					if (membership.contains(event.getNode())) {
 						var command = Command.leave(event.getNode());
-						// TODO not sure how to make only one replica propose this, maybe just deal with
-						// it
-						// sendRequest(new ProposeRequest(command.toBytes()), Agreement.ID);
+						this.sendCommandToLeader(command);
 					}
 				}
 			}
@@ -609,13 +635,33 @@ public class StateMachine extends GenericProtocol {
 			return;
 
 		logger.info("Leader {} timed out, attempting to become leader", this.leader.get());
-		this.proposeNoop();
+		this.proposeNoopLeadership();
 	}
 
 	private void uponProposeNoop(ProposeNoopTimer timer, long timerId) {
 		if (!this.isLeader())
 			return;
-		this.proposeNoop();
+		this.proposeNoopLeadership();
+	}
+
+	private void uponGcTimer(GcTimer timer, long timerId) {
+		var message = new SystemGc(this.commandQueue.getLastExecutedInstance());
+		for (var member : membership)
+			this.sendMessage(message, member);
+
+		Optional<Integer> min = Optional.empty();
+		for (var member : this.membership) {
+			if (!this.gcPerPeer.containsKey(member))
+				return;
+			if (min.isEmpty() || min.get() > this.gcPerPeer.get(member))
+				min = Optional.of(this.gcPerPeer.get(member));
+		}
+		if (min.isEmpty() || this.commandQueue.getLastExecutedInstance() > min.get())
+			min = Optional.of(this.commandQueue.getLastExecutedInstance());
+
+		logger.info("Garbage collecting up to {}", min.get());
+		var request = new GcRequest(min.get());
+		this.sendRequest(request, Agreement.ID);
 	}
 
 }
