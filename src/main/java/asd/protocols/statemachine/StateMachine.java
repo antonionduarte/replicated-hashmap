@@ -47,7 +47,6 @@ import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
 import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.GcTimer;
-import asd.protocols.statemachine.timers.OrderBatchTimer;
 import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
 import asd.slog.SLog;
@@ -223,7 +222,6 @@ public class StateMachine extends GenericProtocol {
 		/*--------------------- Register Timer Handlers ----------------------------- */
 		registerTimerHandler(BatchBuildTimer.ID, this::uponBatchBuild);
 		registerTimerHandler(RetryTimer.ID, this::uponRetryTimer);
-		registerTimerHandler(OrderBatchTimer.ID, this::uponOrderBatchTimer);
 		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
 		registerTimerHandler(ProposeNoopTimer.ID, this::uponProposeNoop);
 		registerTimerHandler(GcTimer.ID, this::uponGcTimer);
@@ -622,10 +620,6 @@ public class StateMachine extends GenericProtocol {
 		assert this.batchBuildTimer == timerId;
 		this.batchBuildTimer = -1;
 		this.finalizeBatch();
-	}
-
-	private void uponOrderBatchTimer(OrderBatchTimer timer, long timerId) {
-		assert this.leaderForwardedCommands.isEmpty() || this.leader.isPresent();
 	}
 
 	private void uponCheckLeaderTimeout(CheckLeaderTimeoutTimer timer, long timerId) {
