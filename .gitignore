@@ -62,3 +62,8 @@ hs_err_pid*
 
 # Helper files
 *.trigger
+
+# Results and stuff
+/analysis/experiments/
+/analysis/graphs/
+

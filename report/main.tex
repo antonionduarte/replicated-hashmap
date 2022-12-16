@@ -119,6 +119,11 @@
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
+Strong consistency in replicated hash maps refers to the property of the data being kept in sync across all of the replicas in the system. This means that, at any given time, all of the replicas will have the same set of key-value pairs, and any changes made to the data on one replica will be immediately reflected on all of the other replicas.
+
+Agreement protocols like Paxos are used to ensure that the replicas in a distributed system can come to consensus on the state of the data, even in the presence of failures. This is important for maintaining strong consistency in replicated hash maps, as it ensures that the replicas are all in agreement on the state of the data and can continue to operate correctly.
+
+In this work we propose a replicated hash map which uses an agreement protocol to maintain strong consistency between the replicas of the system. We further conduct an experimental evaluation where the system is tested with increasing loads of operation requests by clients. 
 
 \end{abstract}
 
@@ -130,14 +135,34 @@
 
 A replicated hash map is a distributed data structure that allows for efficient access to data across a network of machines. It uses the concept of a hash map, which is a data structure that stores key-value pairs and allows for efficient lookup of values based on their associated keys. In a replicated hash map, multiple copies of the hash map are maintained on different machines in the network, and agreement protocols can be used to ensure that all copies are kept consistent with each other.
 
-State machine replication is a technique used in distributed systems to ensure that the same sequence of operations is performed on all replicas of a given state machine. This is typically achieved through the use of an agreement protocol, such as Paxos or Raft, which is used to coordinate the actions of the replicas and reach consensus on the order in which operations should be applied.
-
-Paxos \cite{leslie1998part} \cite{lamport2001paxos} \cite{van2015paxos} and Multi-Paxos \cite{lamport2001paxos} \cite{du2009multi} \cite{van2015paxos} are examples of agreement protocols that are commonly used in distributed systems to achieve consistency in replicated data structures. The Paxos algorithm was first described by Leslie Lamport in 1998 and is a method for reaching consensus among a group of nodes in a distributed system. Multi-Paxos is a variant of the Paxos algorithm that allows for improved performance in scenarios where there are multiple replicated data structures, or multiple instances of the Paxos algorithm running concurrently.
+Paxos \cite{leslie1998part} \cite{lamport2001paxos} \cite{van2015paxos} and Multi-Paxos \cite{lamport2001paxos} \cite{du2009multi} \cite{van2015paxos} are examples of agreement protocols that are commonly used in distributed systems to achieve consistency in replicated data structures. The Paxos algorithm is a method for reaching consensus among a group of nodes in a distributed system. Multi-Paxos is a variant of the Paxos algorithm that allows for improved performance in scenarios where there are multiple replicated data structures, or multiple instances of the Paxos algorithm running concurrently.
 
 In both Paxos and Multi-Paxos, nodes in the distributed system communicate with each other using a series of rounds, during which they propose values, vote on the proposed values, and ultimately agree on a single value to be chosen. Once consensus has been reached, the agreed-upon value can be safely used by the nodes in the system, ensuring that all copies of the replicated data are consistent with each other.
 
-The remainder of this article is organized as follows: In Section 2 we will be going over the Related Work, explaining more thoroughly the mentioned protocols; In Section 3 we will go over the details of our implementation of the protocols and how they interact with each other; In Section 4 we present the results of our experimental evaluation, testing the system with an increasing throughput of clients issuing operations and membership changes. In Section 5 we will summarize and take conclusions on this work.
+Operations decided with agreement have to be executed in the same order in every replica so they don't diverge their state. State machine replication is a technique used in distributed systems to ensure that the same sequence of operations is performed on all replicas of a given state machine. This is typically achieved through the use of an agreement protocol, which is used to coordinate the actions of the replicas and reach consensus on the order in which operations should be applied.
+
+In this work, we present a proposal for a replicated hash map application that takes use of an agreement protocol, either Paxos or Multi-Paxos, and state machine replication implemented with the Babel \cite{fouto2022babel} Java framework.
+
+The remainder of this article is organized as follows: In Section 2 we will be going over the Related Work, explaining more thoroughly the mentioned protocols; In Section 3 we will go over the details of our implementation of the protocols and how they interact with each other; In Section 4 we present the results of our experimental evaluation, testing the system with an increasing throughput of clients issuing operations. In Section 5 we will summarize and take conclusions on this work.
+
+
 \section{Related Work}
+
+\subsection{Paxos} 
+
+The basic idea behind Paxos is that it uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on the value. In each round, replicas running Paxos propose a values, and the other replicas either accept or reject the proposal. If a majority of the replicas accept the proposal, then the value is considered to be agreed upon and the round is considered successful.
+
+There are three main phases in the Paxos protocol: the prepare phase, the accept phase, and the decide/commit phase. In the prepare phase, replicas propose values and asks the other replicas to promise not to accept any other proposals in future rounds. In the accept phase, replicas asks the other replicas to accept the proposal. If a majority of the replicas accept the proposal, then the round is considered successful and the value is committed in the commit phase.
+
+One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to commit. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
+
+\subsection{Multi-Paxos}
+
+Multi-Paxos is a variant of the Paxos protocol that is used when there are multiple replicas that need to agree on multiple values. This can be useful in situations where there are multiple sources of data that need to be kept in sync across the replicas.
+
+The basic idea behind Multi-Paxos is similar to the original Paxos protocol. It uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on the values, but the distinction here is only a designated leader is proposing values.
+
+The key difference between Paxos and Multi-Paxos is that in Multi-Paxos, the replicas can agree on multiple values in a single round. This is achieved by using a sequence number for each value, which allows the replicas to determine the order in which the values should be applied. This can be useful in situations where there are multiple sources of data that need to be kept in sync, as it allows the replicas to agree on the order in which the data should be applied and ensures that the data remains consistent across all of the replicas.
 
 \section{Implementation}
 
@@ -208,7 +233,20 @@ The remainder of this article is organized as follows: In Section 2 we will be g
 		\label{alg:uns_pubsub}
 \end{algorithm}
 
-% Maybe write the PseudoCode to how HyParView interacts with PlumTree
+\subsection{State Machine Replication}
+
+% Explain HashApp <-> SMR and SMR <-> Agreement and how different operations are run in Paxos 
+% don't think we need pseudo-code but wtv
+
+\subsubsection{Multi-Paxos Leadership} % maybe another name
+
+% Explain how SMR handles leadership from Multi-Paxos 
+
+\subsection{Membership Changes}
+
+% Explain how membership changes are handles and executed with agreement
+
+% more subsections?
 
 \section{Experimental Evaluation}
 
