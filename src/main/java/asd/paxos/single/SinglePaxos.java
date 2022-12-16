@@ -213,7 +213,7 @@ public class SinglePaxos implements Paxos {
             /*- If the state is null that means that we don't know its membership yet.
             *   We have to wait until we receive a message from another member with the membership
             *   or the state machine tells us that our previous decision did not change the membership. */
-            // PaxosLog.log("waiting-for-membership");
+            // slogger.log("waiting-for-membership", "slot", this.slot);
             return;
         }
 

@@ -2,16 +2,18 @@ package asd.paxos.single;
 
 import asd.paxos.CommandQueue;
 import asd.paxos.PaxosCmd;
-import asd.paxos.PaxosLog;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import asd.paxos.ProcessId;
 import asd.paxos.ProposalValue;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 class Learner {
     private static final Logger logger = LogManager.getLogger(Learner.class);
+    private static final SLogger slogger = SLog.logger(Learner.class);
 
     private final int slot;
     private final ProcessId id;
@@ -37,16 +39,16 @@ class Learner {
 
     public void onDecide(ProposalValue value) {
         if (this.value == null) {
-            PaxosLog.log("learned", "value", value);
+            slogger.log("learned", "slot", this.slot, "value", value);
             logger.debug("Decided on value {}", value);
             this.value = value;
             this.queue.push(PaxosCmd.decide(this.slot, value));
         } else if (!this.value.equals(value)) {
-            PaxosLog.log("decision-conflict");
+            slogger.log("decision-conflict", "slot", this.slot);
             throw new IllegalStateException("Two different values were decided");
         } else {
             logger.debug("Ignoring duplicate decide");
-            PaxosLog.log("learn-duplicate");
+            slogger.log("learn-duplicate", "slot", this.slot);
         }
     }
 }

@@ -15,7 +15,6 @@ import asd.paxos.Membership;
 import asd.paxos.Paxos;
 import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
-import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
 import asd.paxos.multi.MultiPaxos;
@@ -55,7 +54,6 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 	private Paxos paxos;
 	private final String paxosVariant;
 	private final Map<Pair<Integer, Integer>, Long> timers;
-	private final boolean enableLog;
 
 	// We need to keep track of learned values and membership the moment we join the
 	// system so we dont lose them because the Join notification can take some time
@@ -71,7 +69,6 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		this.paxos = null;
 		this.paxosVariant = props.getProperty("paxos_variant");
 		this.timers = new HashMap<>();
-		this.enableLog = Boolean.parseBoolean(props.getProperty("paxos_log"));
 		this.prejoinQueue = new ArrayList<>();
 
 		/*--------------------- Register Timer Handlers ----------------------------- */
@@ -209,15 +206,12 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 	/*--------------------------------- Timer Handlers ---------------------------------------- */
 
 	private void onPaxosTimer(PaxosTimer timer, long timerId) {
-		PaxosLog.withContext(this.id, timer.slot, () -> {
-			var timerIdPair = Pair.of(timer.slot, timer.timerId);
-			if (!this.timers.containsKey(timerIdPair)) {
-				logger.debug("Ignoring canceled timer {} for slot {}", timer.timerId, timer.slot);
-				PaxosLog.log("trigger-canceled-timer", "slot", timer.slot);
-				return;
-			}
-			this.execute(PaxosCmd.timerExpired(timer.slot, timer.timerId));
-		});
+		var timerIdPair = Pair.of(timer.slot, timer.timerId);
+		if (!this.timers.containsKey(timerIdPair)) {
+			logger.debug("Ignoring canceled timer {} for slot {}", timer.timerId, timer.slot);
+			return;
+		}
+		this.execute(PaxosCmd.timerExpired(timer.slot, timer.timerId));
 	}
 
 	private void onDebugTimer(DebugTimer timer, long timerId) {
@@ -232,77 +226,67 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		if (this.paxos == null)
 			return;
 
-		PaxosLog.withContext(this.id, msg.slot, () -> {
-			logger.trace("Received AcceptOkMessage from {} on slot {}", host, msg.slot);
-			var processId = PaxosBabel.hostToProcessId(host);
-			var slot = msg.slot;
-			this.execute(PaxosCmd.acceptOk(slot, processId, msg.ballot));
-		});
+		logger.trace("Received AcceptOkMessage from {} on slot {}", host, msg.slot);
+		var processId = PaxosBabel.hostToProcessId(host);
+		var slot = msg.slot;
+		this.execute(PaxosCmd.acceptOk(slot, processId, msg.ballot));
 	}
 
 	private void onAcceptRequest(AcceptRequestMessage msg, Host host, short sourceProto, int channelId) {
 		if (this.paxos == null)
 			return;
 
-		PaxosLog.withContext(this.id, msg.slot, () -> {
-			logger.trace("Received accept request from {} for slot {}", host, msg.slot);
-			var processId = PaxosBabel.hostToProcessId(host);
-			var slot = msg.slot;
-			var proposal = new Proposal(msg.proposal.ballot, msg.proposal.value);
-			var membership = new Membership(msg.membership);
-			if (this.paxos == null) {
-				this.prejoinQueue.add(PaxosCmd.membershipDiscovered(slot, membership));
-			} else {
-				this.execute(
-						PaxosCmd.membershipDiscovered(slot, membership),
-						PaxosCmd.acceptRequest(slot, processId, proposal));
-			}
-		});
+		logger.trace("Received accept request from {} for slot {}", host, msg.slot);
+		var processId = PaxosBabel.hostToProcessId(host);
+		var slot = msg.slot;
+		var proposal = new Proposal(msg.proposal.ballot, msg.proposal.value);
+		var membership = new Membership(msg.membership);
+		if (this.paxos == null) {
+			this.prejoinQueue.add(PaxosCmd.membershipDiscovered(slot, membership));
+		} else {
+			this.execute(
+					PaxosCmd.membershipDiscovered(slot, membership),
+					PaxosCmd.acceptRequest(slot, processId, proposal));
+		}
 	}
 
 	private void onDecided(DecidedMessage msg, Host host, short sourceProto, int channelId) {
-		PaxosLog.withContext(this.id, msg.slot, () -> {
-			logger.trace("Received decided message for slot {}", msg.slot);
-			var processId = PaxosBabel.hostToProcessId(host);
-			var slot = msg.slot;
-			var value = msg.value;
-			var membership = new Membership(msg.membership);
-			var cmd1 = PaxosCmd.membershipDiscovered(slot, membership);
-			var cmd2 = PaxosCmd.learn(slot, processId, value);
-			if (this.paxos == null) {
-				this.prejoinQueue.add(cmd1);
-				this.prejoinQueue.add(cmd2);
-			} else {
-				this.execute(cmd1, cmd2);
-			}
-		});
+		logger.trace("Received decided message for slot {}", msg.slot);
+		var processId = PaxosBabel.hostToProcessId(host);
+		var slot = msg.slot;
+		var value = msg.value;
+		var membership = new Membership(msg.membership);
+		var cmd1 = PaxosCmd.membershipDiscovered(slot, membership);
+		var cmd2 = PaxosCmd.learn(slot, processId, value);
+		if (this.paxos == null) {
+			this.prejoinQueue.add(cmd1);
+			this.prejoinQueue.add(cmd2);
+		} else {
+			this.execute(cmd1, cmd2);
+		}
 	}
 
 	private void onPrepareOk(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
 		if (this.paxos == null)
 			return;
 
-		PaxosLog.withContext(this.id, msg.slot, () -> {
-			logger.trace("Received prepare ok from {} for slot {}", host, msg.slot);
-			var processId = PaxosBabel.hostToProcessId(host);
-			var slot = msg.slot;
-			this.execute(PaxosCmd.prepareOk(slot, processId, msg.ballot, msg.accepted));
-		});
+		logger.trace("Received prepare ok from {} for slot {}", host, msg.slot);
+		var processId = PaxosBabel.hostToProcessId(host);
+		var slot = msg.slot;
+		this.execute(PaxosCmd.prepareOk(slot, processId, msg.ballot, msg.accepted));
 	}
 
 	private void onPrepareRequest(PrepareRequestMessage msg, Host host, short sourceProto, int channelId) {
-		PaxosLog.withContext(this.id, msg.slot, () -> {
-			logger.trace("Received prepare request from {} for slot {}", host, msg.slot);
-			var processId = PaxosBabel.hostToProcessId(host);
-			var slot = msg.slot;
-			var membership = new Membership(msg.membership);
-			if (this.paxos == null) {
-				this.prejoinQueue.add(PaxosCmd.membershipDiscovered(slot, membership));
-			} else {
-				this.execute(PaxosCmd.membershipDiscovered(slot, membership),
-						PaxosCmd.prepareRequest(slot, processId, msg.ballot));
-			}
-		});
+		logger.trace("Received prepare request from {} for slot {}", host, msg.slot);
+		var processId = PaxosBabel.hostToProcessId(host);
+		var slot = msg.slot;
+		var membership = new Membership(msg.membership);
+		if (this.paxos == null) {
+			this.prejoinQueue.add(PaxosCmd.membershipDiscovered(slot, membership));
+		} else {
+			this.execute(PaxosCmd.membershipDiscovered(slot, membership),
+					PaxosCmd.prepareRequest(slot, processId, msg.ballot));
+		}
 	}
 
 	/*--------------------------------- Request Handlers ---------------------------------------- */
@@ -342,8 +326,6 @@ public class PaxosProtocol extends GenericProtocol implements Agreement {
 		var channelId = notification.getChannelId();
 		this.registerSharedChannel(channelId);
 		this.id = PaxosBabel.hostToProcessId(notification.getMyself());
-		if (this.enableLog)
-			PaxosLog.init("paxoslog/paxos-" + notification.getMyself().getPort() + ".log");
 
 		/*--------------------- Register Message Serializers ---------------------- */
 		this.registerMessageSerializer(channelId, AcceptOkMessage.ID, AcceptOkMessage.serializer);

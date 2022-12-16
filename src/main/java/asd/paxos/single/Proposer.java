@@ -12,13 +12,15 @@ import asd.paxos.Ballot;
 import asd.paxos.CommandQueue;
 import asd.paxos.PaxosCmd;
 import asd.paxos.PaxosConfig;
-import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
 import asd.paxos.ProposalValue;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 class Proposer {
     private static final Logger logger = LogManager.getLogger(Proposer.class);
+    private static final SLogger slogger = SLog.logger(Proposer.class);
 
     private static enum Phase {
         PREPARE, ACCEPT, DECIDED
@@ -79,7 +81,7 @@ class Proposer {
             throw new IllegalStateException("Already have a proposal");
         assert this.currentPhase == Phase.PREPARE;
 
-        PaxosLog.log("propose", "value", value);
+        slogger.log("propose", "slot", this.slot, "value", value);
         logger.debug("Proposing value {}", value);
         this.proposalValue = value;
         this.acceptors.forEach(acceptor -> {
@@ -117,7 +119,8 @@ class Proposer {
             return;
         }
 
-        PaxosLog.log("received-prepare-ok",
+        slogger.log("received-prepare-ok",
+                "slot", this.slot,
                 "from", processId,
                 "ballot", ballot,
                 "highestAccept", highestAccept.orElse(null));
@@ -125,7 +128,8 @@ class Proposer {
         if (highestAccept.isPresent()) {
             var accept = highestAccept.get();
             if (this.proposalBallot.compare(accept.ballot) != Ballot.Order.GREATER) {
-                PaxosLog.log("updated-proposal",
+                slogger.log("updated-proposal",
+                        "slot", this.slot,
                         "old", new Proposal(this.proposalBallot, this.proposalValue),
                         "new", accept);
                 this.proposalValue = accept.value;
@@ -137,7 +141,8 @@ class Proposer {
         this.currentOks.add(processId);
         if (this.currentOks.size() == this.quorumSize) {
             var sentProposal = new Proposal(this.currentBallot, this.proposalValue);
-            PaxosLog.log("majority-prepare-ok",
+            slogger.log("majority-prepare-ok",
+                    "slot", this.slot,
                     "currentBallot", this.currentBallot,
                     "proposal", new Proposal(this.proposalBallot, this.proposalValue),
                     "sentProposal", sentProposal);
@@ -170,13 +175,15 @@ class Proposer {
             return;
         }
 
-        PaxosLog.log("received-accept-ok",
+        slogger.log("received-accept-ok",
+                "slot", this.slot,
                 "from", processId,
                 "ballot", ballot);
 
         this.currentOks.add(processId);
         if (this.currentOks.size() == this.quorumSize) {
-            PaxosLog.log("majority-accept-ok",
+            slogger.log("majority-accept-ok",
+                    "slot", this.slot,
                     "currentBallot", this.currentBallot,
                     "value", this.proposalValue);
 
@@ -194,7 +201,8 @@ class Proposer {
     public void triggerTimer(int timerId) {
         assert this.currentTimerId == timerId;
 
-        PaxosLog.log("majority-timeout",
+        slogger.log("majority-timeout",
+                "slot", this.slot,
                 "phase", this.currentPhase,
                 "currentBallot", this.currentBallot,
                 "proposalBallot", this.proposalBallot,

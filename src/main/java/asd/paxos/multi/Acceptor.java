@@ -11,13 +11,15 @@ import asd.paxos.Ballot;
 import asd.paxos.CommandQueue;
 import asd.paxos.Configurations;
 import asd.paxos.PaxosCmd;
-import asd.paxos.PaxosLog;
 import asd.paxos.ProcessId;
 import asd.paxos.Proposal;
 import asd.paxos.ProposalSlot;
+import asd.slog.SLog;
+import asd.slog.SLogger;
 
 public class Acceptor {
     private static final Logger logger = LogManager.getLogger(Acceptor.class);
+    private static final SLogger slogger = SLog.logger(Acceptor.class);
 
     private final ProcessId id;
     private final CommandQueue queue;
@@ -58,7 +60,7 @@ public class Acceptor {
                 PaxosCmd.prepareOk(slot, processId, ballot, accepted));
 
         logger.trace("Sending prepare ok to {} with ballot {}", processId, ballot);
-        PaxosLog.log("send-prepare-ok",
+        slogger.log("send-prepare-ok",
                 "slot", slot,
                 "proposer", processId,
                 "ballot", ballot);
@@ -81,7 +83,7 @@ public class Acceptor {
         this.queue.push(PaxosCmd.acceptOk(slot, processId, promise));
 
         logger.trace("Sending accept ok to {} with ballot {}", processId, proposal.ballot);
-        PaxosLog.log("send-accept-ok",
+        slogger.log("send-accept-ok",
                 "slot", slot,
                 "proposer", processId,
                 "ballot", proposal.ballot);
