@@ -124,6 +124,7 @@ public class StateMachine extends GenericProtocol {
 	private final CommandQueue commandQueue;
 	private final Duration commandQueueTimeout;
 	private long commandQueueTimer;
+	private Instant commandLastExecuted;
 
 	/// Duplicate operation tracking
 	// Keep track of all executed operation UUIDs, for a certain ttl, so we can
@@ -168,6 +169,7 @@ public class StateMachine extends GenericProtocol {
 		this.commandQueue = new CommandQueue();
 		this.commandQueueTimeout = Duration.parse(props.getProperty("statemachine_command_queue_timeout"));
 		this.commandQueueTimer = -1;
+		this.commandLastExecuted = Instant.now();
 
 		/// Duplicate operation tracking
 		// duplicateOperationTtl is the amount of time that we remember an operation id
@@ -184,9 +186,9 @@ public class StateMachine extends GenericProtocol {
 		Properties channelProps = new Properties();
 		channelProps.setProperty(TCPChannel.ADDRESS_KEY, address);
 		channelProps.setProperty(TCPChannel.PORT_KEY, port); // The port to bind to
-		channelProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "1000");
-		channelProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "3000");
-		channelProps.setProperty(TCPChannel.CONNECT_TIMEOUT_KEY, "1000");
+		channelProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "8000");
+		channelProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "20000");
+		channelProps.setProperty(TCPChannel.CONNECT_TIMEOUT_KEY, "10000");
 		channelId = createChannel(TCPChannel.NAME, channelProps);
 
 		/*-------------------- Register Channel Events ------------------------------- */
@@ -225,6 +227,7 @@ public class StateMachine extends GenericProtocol {
 		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
 		registerTimerHandler(ProposeNoopTimer.ID, this::uponProposeNoop);
 		registerTimerHandler(GcTimer.ID, this::uponGcTimer);
+		// registerTimerHandler(CommandQueueTimer.ID, this::uponCommandQueueTimer);
 	}
 
 	@Override
@@ -286,6 +289,7 @@ public class StateMachine extends GenericProtocol {
 
 		this.leaderLastMessage = Instant.now();
 		this.leaderForwardedCommands.remove(command);
+		this.commandLastExecuted = Instant.now();
 		switch (command.getKind()) {
 			case BATCH -> {
 				var batch = command.getBatch();
@@ -457,8 +461,15 @@ public class StateMachine extends GenericProtocol {
 		var command = Command.fromBytes(notification.operation);
 
 		this.commandQueue.insert(instance, command);
-		if (this.commandQueue.hasMissingInstance() && this.commandQueueTimer == -1)
-			this.commandQueueTimer = this.setupTimer(new CommandQueueTimer(), this.commandQueueTimeout.toMillis());
+
+		// Attempt to become leader if we have missed commands so we can catch up
+		if (this.commandQueue.hasMissingInstance()
+				&& Duration.between(Instant.now(), this.commandLastExecuted).compareTo(this.commandQueueTimeout) > 0
+				&& this.leader.isPresent() && !this.isLeader()) {
+			logger.info("Command queue timed out, attempting to become leader, last executed: {}",
+					this.commandQueue.getLastExecutedInstance());
+			this.proposeNoopLeadership();
+		}
 
 		while (this.commandQueue.hasReadyCommand())
 			this.executeOrderedCommand(this.commandQueue.popReadyCommand());
@@ -660,5 +671,15 @@ public class StateMachine extends GenericProtocol {
 		var request = new GcRequest(min.get());
 		this.sendRequest(request, Agreement.ID);
 	}
+
+	// private void uponCommandQueueTimer(CommandQueueTimer timer, long timerId) {
+	// // If we missed some commands then try to become the leader so we can learn
+	// them
+	// this.commandQueueTimer = -1;
+	// logger.info("Command queue timed out, attempting to become leader, last
+	// executed: {}",
+	// this.commandQueue.getLastExecutedInstance());
+	// this.proposeNoopLeadership();
+	// }
 
 }
