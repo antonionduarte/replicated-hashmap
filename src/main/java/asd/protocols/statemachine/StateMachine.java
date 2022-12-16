@@ -45,7 +45,6 @@ import asd.protocols.statemachine.notifications.ExecuteNotification;
 import asd.protocols.statemachine.requests.OrderRequest;
 import asd.protocols.statemachine.timers.BatchBuildTimer;
 import asd.protocols.statemachine.timers.CheckLeaderTimeoutTimer;
-import asd.protocols.statemachine.timers.CommandQueueTimer;
 import asd.protocols.statemachine.timers.GcTimer;
 import asd.protocols.statemachine.timers.ProposeNoopTimer;
 import asd.protocols.statemachine.timers.RetryTimer;
@@ -83,6 +82,9 @@ public class StateMachine extends GenericProtocol {
 		JOINING, ACTIVE
 	}
 
+	private static record JoiningReplica(Host host, List<Host> membership) {
+	}
+
 	// Protocol information, to register in babel
 	public static final String PROTOCOL_NAME = "StateMachine";
 	public static final short ID = 200;
@@ -115,7 +117,8 @@ public class StateMachine extends GenericProtocol {
 	/// JoinRequest tracking
 	// Keeps track of any peers that sent us a join request so we can send them a
 	// reply.
-	private final Queue<Host> joiningReplicas;
+	private final Set<Host> pendingReplicas;
+	private final Map<Integer, JoiningReplica> joiningReplicas;
 
 	/// Command Queueing
 	// commandQueue is a queue of commands that are waiting to be executed.
@@ -123,7 +126,6 @@ public class StateMachine extends GenericProtocol {
 	// after the timer fires, a proposal is made for the first missing instance.
 	private final CommandQueue commandQueue;
 	private final Duration commandQueueTimeout;
-	private long commandQueueTimer;
 	private Instant commandLastExecuted;
 
 	/// Duplicate operation tracking
@@ -163,12 +165,12 @@ public class StateMachine extends GenericProtocol {
 
 		/// Membership tracking
 		/// JoinRequest tracking
-		this.joiningReplicas = new LinkedList<>();
+		this.pendingReplicas = new HashSet<>();
+		this.joiningReplicas = new HashMap<>();
 
 		/// Command queueing
 		this.commandQueue = new CommandQueue();
 		this.commandQueueTimeout = Duration.parse(props.getProperty("statemachine_command_queue_timeout"));
-		this.commandQueueTimer = -1;
 		this.commandLastExecuted = Instant.now();
 
 		/// Duplicate operation tracking
@@ -227,7 +229,6 @@ public class StateMachine extends GenericProtocol {
 		registerTimerHandler(CheckLeaderTimeoutTimer.ID, this::uponCheckLeaderTimeout);
 		registerTimerHandler(ProposeNoopTimer.ID, this::uponProposeNoop);
 		registerTimerHandler(GcTimer.ID, this::uponGcTimer);
-		// registerTimerHandler(CommandQueueTimer.ID, this::uponCommandQueueTimer);
 	}
 
 	@Override
@@ -313,8 +314,12 @@ public class StateMachine extends GenericProtocol {
 				this.membership.add(join.host);
 				openConnection(join.host);
 
-				if (this.joiningReplicas.contains(join.host)) {
-					sendRequest(new CurrentStateRequest(instance), HashApp.PROTO_ID);
+				if (this.pendingReplicas.contains(join.host)) {
+					assert !this.joiningReplicas.containsKey(instance);
+					var replica = new JoiningReplica(join.host, List.copyOf(this.membership));
+					this.pendingReplicas.remove(join.host);
+					this.joiningReplicas.put(instance, replica);
+					this.sendRequest(new CurrentStateRequest(instance), HashApp.PROTO_ID);
 				}
 				this.notifyMemberAdded(instance, join.host);
 			}
@@ -441,15 +446,16 @@ public class StateMachine extends GenericProtocol {
 	/*--------------------------------- Replies ---------------------------------------- */
 
 	private void uponCurrentStateReply(CurrentStateReply reply, short i) {
-		var joiningReplica = joiningReplicas.poll();
-		if (joiningReplica == null) {
+		var instance = reply.getInstance();
+		var replica = this.joiningReplicas.remove(instance);
+		if (replica == null) {
 			logger.warn("CurrentStateReply with no joining replica");
 			return;
 		}
-		// TODO: This is wrong, we need to send the membership as it was when the Join
-		// command was executed
-		sendMessage(new SystemJoinReply(List.copyOf(this.membership), reply.getInstance(), reply.getState()),
-				joiningReplica);
+
+		var membership = replica.membership;
+		var message = new SystemJoinReply(membership, instance, reply.getState());
+		this.sendMessage(message, replica.host);
 	}
 
 	/*--------------------------------- Notifications ---------------------------------------- */
@@ -527,8 +533,8 @@ public class StateMachine extends GenericProtocol {
 			logger.warn("Received system join from replica that is already part of the system, ignoring");
 			return;
 		}
-		joiningReplicas.add(sender);
 		var command = Command.join(sender);
+		this.pendingReplicas.add(sender);
 		this.sendCommandToLeader(command);
 	}
 
@@ -597,7 +603,10 @@ public class StateMachine extends GenericProtocol {
 				case ACTIVE -> {
 					if (membership.contains(event.getNode())) {
 						var command = Command.leave(event.getNode());
-						this.sendCommandToLeader(command);
+						if (this.leader.isPresent() && this.leader.get().equals(event.getNode()))
+							this.proposeNoopLeadership();
+						else
+							this.sendCommandToLeader(command);
 					}
 				}
 			}
@@ -671,15 +680,5 @@ public class StateMachine extends GenericProtocol {
 		var request = new GcRequest(min.get());
 		this.sendRequest(request, Agreement.ID);
 	}
-
-	// private void uponCommandQueueTimer(CommandQueueTimer timer, long timerId) {
-	// // If we missed some commands then try to become the leader so we can learn
-	// them
-	// this.commandQueueTimer = -1;
-	// logger.info("Command queue timed out, attempting to become leader, last
-	// executed: {}",
-	// this.commandQueue.getLastExecutedInstance());
-	// this.proposeNoopLeadership();
-	// }
 
 }

@@ -1,0 +1,14 @@
+
+define REPLICA_PORT = 3002
+
+table inet paxos {
+	chain drop_packets {
+		type filter hook input priority filter - 1; policy accept;
+		tcp dport $REPLICA_PORT drop
+	}
+
+	chain drop_packets_out {
+		type filter hook  output priority filter - 1; policy accept;
+		tcp sport $REPLICA_PORT drop
+	}
+}
