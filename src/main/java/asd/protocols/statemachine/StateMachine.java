@@ -111,6 +111,7 @@ public class StateMachine extends GenericProtocol {
 	/// GC tracking
 	// Keeps track of the last executed slot per peer.
 	private final HashMap<Host, Integer> gcPerPeer;
+	private final Duration gcInterval;
 
 	/// JoinRequest tracking
 	// Keeps track of any peers that sent us a join request so we can send them a
@@ -158,6 +159,7 @@ public class StateMachine extends GenericProtocol {
 
 		/// GC tracking
 		this.gcPerPeer = new HashMap<>();
+		this.gcInterval = Duration.parse(props.getProperty("statemachine_gc_interval"));
 
 		/// Membership tracking
 		/// JoinRequest tracking
@@ -238,7 +240,7 @@ public class StateMachine extends GenericProtocol {
 				this.leaderTimeoutDuration.toMillis() + leaderTimeoutRandomness);
 
 		setupPeriodicTimer(new ProposeNoopTimer(), 0, this.leaderTimeoutDuration.toMillis() / 3);
-		setupPeriodicTimer(new GcTimer(), 5000, 5000);
+		setupPeriodicTimer(new GcTimer(), this.gcInterval.toMillis(), this.gcInterval.toMillis());
 
 		String host = props.getProperty("statemachine_initial_membership");
 		System.out.println("MEMBERSHIP = " + host);
