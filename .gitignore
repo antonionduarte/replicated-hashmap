@@ -64,6 +64,6 @@ hs_err_pid*
 *.trigger
 
 # Results and stuff
-/analysis/experiments/
+/analysis/results/
 /analysis/graphs/
 
