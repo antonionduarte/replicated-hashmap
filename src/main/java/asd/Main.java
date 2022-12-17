@@ -56,6 +56,8 @@ public class Main {
 		babel.registerProtocol(sm);
 		babel.registerProtocol(agreement);
 
+		Thread.sleep(5000);
+
 		// Init the protocols. This should be done after creating all protocols,
 		// since there can be inter-protocol communications in this step.
 		hashApp.init(props);
