@@ -161,7 +161,6 @@ The consensus problem in a distributed system refers to the challenge of achievi
     \item \textbf{Uniform Agreement} No two processes decide differently. 
 \end{itemize}
 
-% TODO: Cite FLP here.
 Consensus, as specified in it's formal definition, has been proven to be impossible under an asynchronous system with the crash-fault model \cite{fischer1985impossibility}, it is, although, possible to achieve a practically useful version by relaxing one or some of its properties.
 
 \subsubsection{Paxos} 
@@ -205,75 +204,80 @@ We implemented the replicated hash map application, the state machine replicatio
 
 The replicated hash map application layer receives requests from clients to perform operations based on its functionality. These operations are equivalent to the ones performed on a local hash map: \texttt{Get(Key)} and \texttt{Put(Key, Value)}. 
 
-For each request a assigned unique number.
-
-1.1 HashApp receives requests from clients.
-    Requests can be one of Get(Key) or Put(Key, Value)
-1.2 Each request is assigned a random UUID and this UUID is associated to the client so we know who to respond to later.
-1.3 For each request, a notification is sent to the StateMachine to order the request.
-StateMachine:
-2.1 Upon receiving an order request, the state machine will either buffer it, if it is not currently in the membership or add it to a batch.
-    If the state machine is already in the progress of building a batch then this request is simply added to it.
-    Otherwise a new batch is created and a timer is started. The batch will be built after the timer expires or a maximum batch size is reached.
+For each request a unique number is assigned which is associated to the client so it knows who to reply to later. The request is sent to the state machine replication to order it. Later that request's outcome is delivered to the application where the state is changed and a response to that operation is delivered to the client.
 
 \subsection{State Machine Replication}
 
-% Explain HashApp <-> SMR and SMR <-> Agreement and how different operations are run in Paxos 
-% don't think we need pseudo-code but wtv
+Upon receiving an order request, the state machine will either buffer it if the replica did not join the system yet or propose it to the agreement protocol where it will eventually be ordered.
 
-HashApp:
+After an operation decision from the agreement protocol, the state machine will send it to the application if it is in order. If not, it will hold it until it gets all the operations that precede it. 
 
-2.2 After building a batch, which is a type of command, this command is sent to the agreement protocol where it will eventually be ordered.
-2.3 After receiving an ordered command from the agreement protocol, the state machine will execute it if possible.
-    If this command is a batch then for each individual request the application is notified that the request was ordered using its UUID.
-HashApp:
-3.1 After receing an ordered request, the application will execute it and check if there are any clients associated the UUID.
-    For every client associated a response is sent.
+\subsubsection{Operation Batching}
 
-\subsubsection{Multi-Paxos Leadership} % maybe another name
+An optimization we implemented is operation batching. Batches are a list of operations the state machine receives from the application. A batch is formed from operations received in a time span, or until it contains enough operations. 
 
-% Explain how SMR handles leadership from Multi-Paxos 
+Thanks to this, the state machine will issue a request to the agreement protocol for each batch instead of for each single operation. When a batch is returned from agreement and then is the next in order to be executed, every operation in it will be delivered individually to the application.
 
-When using multi paxos as the agreement protocol then one of the replicas is considered the leader.
-The leader is responsible for ordering the messages and all followers will forward commands to the leader
-instead of the agreement protocol.
-A replica will attempt to take leadership in the following circumstances:
-1. There is not leader and the replica has a command it needs to order.
-2. There is a leader but it hasn't heard from it in a while.
-3. There is a leader and the connection to the leader is lost.
-4. The replica lost some commands is is unable to execute the new commands
-    because they depend on the new ones. The replica only considers commands
-    to be lost if it is missing them for a certain amount of time.
-
-The agreement protocol in each statemachine will notify the statemachine about a new leader
-when it accepts a Prepare request from another replica.
-
-When a leader change is detected, a replica will resent all pending commands to the new leader.
-
+This optimization greatly increases performance as the execution of the agreement is the step that leverages more execution time, more so with a bigger amount of replicas.
 
 \subsubsection{Membership Changes}
 
 % Explain how membership changes are handles and executed with agreement
 
-The state machine can handle membership changes by using commands that add and remove members.
-To add or remove a member one of this commands is created and ordered uisng the agreement protocol.
-The membership change takes place when the commands are eventually executed.
+The state machine can handle membership changes by using special commands, which are not originated from the application, that add and remove members. To add or remove a member one of these is issued to the agreement protocol. The membership change takes place when the commands are eventually executed.
 
-When a statemachine wants to join the membership, it will contact a replica that is already in the membership and ask them to join.
-The replica will attempt to order a Join command using the agreement protocol and when it later executes that command it will send
-the joining statemachine any information it requires like the current instance in the agreement protocol, the membership at the instance
-it joined and the application state.
+In the case of a new replica wanting to join the system, it contacts a replica that is already in it and request it to join. In turn, the one receving the request issues the command to add a new member to the agreement protocol and when it later executes that command it sends the joining replica the information it requires, the current instance in the agreement protocol, the membership and the application state at that instance.
 
-When a replica detects that another replica is down it will attempt to order a Leave command.
-This command is used to remove a replica from the current membership.
+In the case of a replica detecting that another is down, it issues the command to remove a member to the the agreement protocol. After it is executed, the replica in question is removed from every replica's membership set. If many replicas simultaneously detect that one has failed  they will all issue the remove member command, but that is not an issue because the membership will end up having the same state.  
+
+We note that these special commands are not batched, only operations that come from the application are. 
+
+\subsubsection{Handling Leadership}
+
+When using agreement protocols that have the notion of a leader such as Multi-Paxos, one of the replicas is considered the leader. The leader is responsible for ordering all the operations and so the other replicas will forward their operations to the leader instead of issuing them directly to the agreement protocol. Because of this, the state machine needs to know who is the leader, besides the agreement protocol.
+
+A replica will attempt to take leadership in the following circumstances:
+\begin{enumerate}
+\item There is no leader and the replica has an operation it needs to order. This happens in the beggining of the system.
+\item The leader is suspected to be unreachable, whether it crashed or lost connection.
+\item The replica has lost some operations and is unable to execute the new ones because they depend on the lost ones. The replica only considers operations to be lost if it is missing them for a certain amount of time.
+\end{enumerate}
+
+In the case of Multi-Paxos, in each replica it will notify its state machine about a new leader when it accepts a prepare request from another replica. When a leader change is detected, a replica will send all its pending operations to the new leader.
 
 \subsection{Agreement}
 
-% more subsections?
+The agreement protocols, Paxos and Multi-Paxos, were implemented as indicated in their specifications. They can be interchanged easily using the same implemented state machine.
+
 
 \section{Experimental Evaluation}
 
-\textbf{Testbench:} our tests were conducted using a docker setup with a container per replica, using a single machine with an Intel Xeon Gold 6346 CPU, 128 GiB of DDR4 3200MHz RAM, and 1 Gbps of network bandwidth. 
+\subsection{Setup}
+
+\begin{table}[h]
+    \centering
+    \caption{Protocol Parameters}
+    \label{tab:parameters}
+    \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{|l|l|r|}
+    \hline
+    \textbf{Protocol}              & \textbf{Parameter}  & \textbf{Value} \\ \hline
+    \multirow{2}{*}{Clients}       & \% Reads            & 50\%           \\
+                                   & \% Writes           & 50\%           \\ \hline
+    \multirow{4}{*}{State Machine} & Leader Timeout      & 3s             \\
+                                   & Batch Build Timeout & 5ms            \\
+                                   & Batch Max Size      & 64             \\
+                                   & Command Timeout     & 1s             \\ \hline
+    Agreement                      & Proposal Timeout    & 200ms          \\ \hline
+    \end{tabular}%
+    }
+\end{table}
+
+The static configuration of each protocol and clients used in this experimental evaluation are presented in Table~\ref{tab:parameters}.
+
+\textbf{Testbench:} the evaluation was conducted using a docker setup with a container per replica and a container for all the YCSB clients, using two machines with an Intel Xeon Gold 6346 CPU, 128 GiB of DDR4 3200MHz RAM, and 1 Gbps of network bandwidth. One of the machines contained the clients and the other the replicas.
+
+\subsection{Results}
 
 \begin{figure}[htp]
     
@@ -317,27 +321,23 @@ This command is used to remove a replica from the current membership.
 
 \end{figure}
 
-In all figures we can see that multi-paxos outperforms paxos.
-This is expected since, by using a designated proposer, the "leader", multi-paxos can avoid the contention that paxos suffers from when there are multiple proposers trying to propose a value at the same time.
+Figures~\ref{fig:3replicas} and~\ref{fig:6replicas} present throughput-latency plots of the system with both agreement protocols, different amount of replicas and different operation payload sizes. 
 
-Even when contention is low or non-existent, multi-paxos still outperforms paxos.
-Possible reasons for this are:
+In all of the figures we can see that Multi-Paxos outperforms Paxos, saturating at a much higher throughput. This is expected since using a distinguished proposer, Multi-Paxos avoids the contention that Paxos suffers from when there are multiple proposers trying to propose a value at the same time.
+
+Even when both don't show saturation, we can observe Multi-Paxos still outperforms Paxos by a fixed latency amount with six replicas. Possible reasons for this are:
 \begin{enumerate}
-    \item One of the replicas is considered the leader.
-        Because of this, that replica only requires one RTT to propose a command.
-        Since each replicas should handle about 1/3 of the clients and this replica can respond faster to clients
-        then it should be responsible for more than 1/3 of the total operations during the test run causing the average response latency to be lower.
-    \item The total amount of messages and payload sent between replicas is lower in multi-paxos, this means less cpu time is spent on message passing and processing which in turn can improve latency.
-        This happens because, even tough non-leader replicas require 2 RTTs to propose a command, they only need to forward the command to the leader instead of sending multiple prepare requests to all acceptors and have those acceptors send back responses.
+    \item In Multi-Paxos the leader only requires one RTT to propose a command. Since each replica should handle one sixth of the clients and the leader can respond faster to clients, then it should be responsible for more than one sixth of the total operations during the test run causing the average response latency to be lower.
+    \item The total amount of messages and payload sent between replicas is lower in Multi-Paxos, this means less CPU time is spent on message passing and processing which in turn can improve latency. This happens because, even though non-leader replicas require two RTTs to propose a command, they only need to forward the command to the leader instead of sending multiple prepare requests to all acceptors and have those acceptors send back responses.
 \end{enumerate}
 
 \section{Conclusions}
 
-We evaluated the performance of two replicated hashmap systems using state-machine replication, one of which implemented Paxos and the other implemented Multipaxos.
-Our experimental results demonstrate that Multipaxos has a superior performance over Paxos in this context.
-Multipaxos was able to achieve a higher success rate in committing updates to the hashmap, with lower overall latency and fewer retries due to its use of a leader.
-The reduction in overall latency and messages sent is likely the primary contributor to the improved performance of Multipaxos, as it allows for quicker and more efficient communication between nodes in the distributed system.
-Overall, these findings suggest that Multipaxos is a valuable alternative to Paxos in replicated hashmap systems, and further research into its use in other distributed systems contexts is warranted.
+We evaluated the performance of a replicated hashmap system using state-machine replication with two different agreement protocols we implemented: Paxos and Multi-Paxos.
+
+Our experimental results demonstrate that Multi-Paxos has a superior performance over Paxos in this context. Multi-Paxos was able to achieve a higher success rate in committing updates to the hashmap, with lower overall latency and fewer retries due to its use of a leader. This results in Multi-Paxos handling a much bigger amount of operation throughput than Paxos.
+
+Overall, these findings suggest that Multi-Paxos is a valuable alternative to Paxos in replicated hash map systems, and further research into its use in other distributed systems contexts is warranted.
 
 %%
 %% The acknowledgments section is defined using the "acks" environment
