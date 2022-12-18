@@ -180,7 +180,7 @@ There are two main phases in the Paxos protocol: the prepare phase and the accep
 
 One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to decide. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
 
-The main disadvantage of using Paxos in opposition to some of its alternatives, is that for each value that we're deciding on, we need to use a new instance of the protocol. This implies that everytime we want to make a decision, we need to redo all the phases of the algorithm, including the prepare phase, which impacts the performance of the protocol. 
+The main disadvantage of using Paxos in opposition to some of its alternatives, is that for each value that we're deciding on, we need to use a new instance of the protocol. This implies that everytime we want to make a decision, we need to redo all the phases of the algorithm, including the prepare phase, which impacts the performance of the protocol, due to the added round trips in the protocol's communication steps. 
 
 \subsubsection{Multi-Paxos}
 
@@ -188,7 +188,7 @@ The main disadvantage of using Paxos in opposition to some of its alternatives, 
 
 Multi-Paxos is a variant of the Paxos protocol and as such, it also uses two phases in which the replicas communicate with each other to come to agreement on values. The distinction here is a distinguished proposer is selected (also referred to as leader) to be the only one proposing values.
 
-Additionally, in contrary to Paxos, there is only a single instance of the protocol which contains the shared state for decisions made for multiple values. This shared state will also contain the distinguished proposer. 
+Additionally, in contrary to Paxos, there is only a single instance of the protocol which contains the shared state for decisions made for multiple values, which most importantly contains the distinguished proposer.
 
 The benefit of using a distinguished proposer is that it relinquishes the need of the prepare phase when making multiple decisions. This means only accept messages are sent by the leader which removes one round-trip-time from the process of making a decision.
 
@@ -197,7 +197,7 @@ The leader is elected by using a prepare phase, either when first initializing t
 
 \section{Implementation}
 
-The system is divided in three layers: 1. the application that holds the hash map functionality. The app sends issued operations to 2. the state machine replication so they are ordered with operations from other replicas and the state is kept consistent. In turn, the state machien replicatinos runs 3. an agreement protocol (in this work Paxos or Multi-Paxos) to agree on the operations between replicas. 
+The system is divided in three layers: 1. the application that holds the hash map functionality. The app sends operations to 2. the state machine so they are ordered with operations from other replicas and the state is kept consistent. In turn, the state machine issues operations to 3. an agreement protocol, which proposes them and eventually agrees between the replicas on which are executed in each instance.
 
 We implemented the replicated hash map application, the state machine replication protocol, Paxos and Multi-Paxos using the Babel Java framework, ensuring both agreement protocols are compared fairly.
 
@@ -220,8 +220,6 @@ StateMachine:
 
 % Explain HashApp <-> SMR and SMR <-> Agreement and how different operations are run in Paxos 
 % don't think we need pseudo-code but wtv
-
-
 
 HashApp:
 
@@ -274,6 +272,8 @@ This command is used to remove a replica from the current membership.
 % more subsections?
 
 \section{Experimental Evaluation}
+
+\textbf{Testbench:} our tests were conducted using a docker setup with a container per replica, using a single machine with an Intel Xeon Gold 6346 CPU, 128 GiB of DDR4 3200MHz RAM, and 1 Gbps of network bandwidth. 
 
 \begin{figure}[htp]
     
