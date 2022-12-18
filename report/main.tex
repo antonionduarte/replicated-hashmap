@@ -167,71 +167,75 @@ The key difference between Paxos and Multi-Paxos is that in Multi-Paxos, the rep
 \section{Implementation}
 
 % I kept this pseudocode example here.
-\begin{algorithm}
-    % TODO: Write the Pseudocode to how the PubSub interacts with PlumTree
-    \Interface{
-        \Requests{
-            Subscribe(topic)\;
-            Unsubscribe(topic)\;
-            Publish(msg, topic)\;
-        }
+% \begin{algorithm}
+%     % TODO: Write the Pseudocode to how the PubSub interacts with PlumTree
+%     \Interface{
+%         \Requests{
+%             Subscribe(topic)\;
+%             Unsubscribe(topic)\;
+%             Publish(msg, topic)\;
+%         }
 
-        \Indications{
-            PubsubDeliver(msg)\;
-            SubscriptionReply(topic)\;
-            UnsubscriptionReply(topic)\;
-        }
-    }
+%         \Indications{
+%             PubsubDeliver(msg)\;
+%             SubscriptionReply(topic)\;
+%             UnsubscriptionReply(topic)\;
+%         }
+%     }
 
-    \texttt{\\}
+%     \texttt{\\}
 
-    \State{
-        $seenMessages$\;
-        $subscribedTopics$\;
-    }
+%     \State{
+%         $seenMessages$\;
+%         $subscribedTopics$\;
+%     }
 
-    \texttt{\\}
+%     \texttt{\\}
 
-		\Upon{Init}{
-			$seenMessages \leftarrow \{\}$\;
-			$subscribedTopics \leftarrow \{\}$\; 
-		}
+% 		\Upon{Init}{
+% 			$seenMessages \leftarrow \{\}$\;
+% 			$subscribedTopics \leftarrow \{\}$\; 
+% 		}
 
-		\texttt{\\}
+% 		\texttt{\\}
 
-    \Upon{PlumtreeDeliver(sender, \{\textbf{GOSSIP}, msg, topic)\}} {
-        \If{$topic \in subscribedTopics \land msg \notin seenMessages$} {
-            $seenMessages \leftarrow seenMessages \cup \{message\}$\;
-            \Trigger PubsubDeliver(msg)\;
-        }
-    }
+%     \Upon{PlumtreeDeliver(sender, \{\textbf{GOSSIP}, msg, topic)\}} {
+%         \If{$topic \in subscribedTopics \land msg \notin seenMessages$} {
+%             $seenMessages \leftarrow seenMessages \cup \{message\}$\;
+%             \Trigger PubsubDeliver(msg)\;
+%         }
+%     }
 
-    \texttt{\\}
+%     \texttt{\\}
 
-    \Upon{Subscribe(topic)} {
-        $subscribedTopics \leftarrow subscribedTopics \cup \{topic\}$\;
-        \Trigger{SubscriptionReply(topic)}\;
-    }
+%     \Upon{Subscribe(topic)} {
+%         $subscribedTopics \leftarrow subscribedTopics \cup \{topic\}$\;
+%         \Trigger{SubscriptionReply(topic)}\;
+%     }
 
-    \texttt{\\}
+%     \texttt{\\}
 
-    \Upon{Unsubscribe(topic)} {
-        $subscribedTopics \leftarrow subscribedTopics \setminus \{topic\}$\;
-        \Trigger{UnsubscriptionReply(topic)}\;
-    }
+%     \Upon{Unsubscribe(topic)} {
+%         $subscribedTopics \leftarrow subscribedTopics \setminus \{topic\}$\;
+%         \Trigger{UnsubscriptionReply(topic)}\;
+%     }
 
-    \texttt{\\}
+%     \texttt{\\}
 
-    \Upon{Publish(\{message, topic\})} {
-        \Trigger PlumtreeBroadcast(\{message, topic\})\;
+%     \Upon{Publish(\{message, topic\})} {
+%         \Trigger PlumtreeBroadcast(\{message, topic\})\;
         
-        \If{$topic \in subscribedTopics$} {
-            \Trigger PubsubDeliver(msg)\;
-        }
-    }
-    \caption{Unstructured Publish-Subscribe}
-		\label{alg:uns_pubsub}
-\end{algorithm}
+%         \If{$topic \in subscribedTopics$} {
+%             \Trigger PubsubDeliver(msg)\;
+%         }
+%     }
+%     \caption{Unstructured Publish-Subscribe}
+% 		\label{alg:uns_pubsub}
+% \end{algorithm}
+
+% Im
+
+We implemented Paxos, Multi-Paxos and the state machine replication protocol using the Babel Java framework, ensuring both agreement protocols are compared fairly.
 
 \subsection{State Machine Replication}
 
@@ -294,6 +298,34 @@ This command is used to remove a replica from the current membership.
 % more subsections?
 
 \section{Experimental Evaluation}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{3R_128B.pdf}
+    \caption{Performance for operations with 128 bytes over 3 replicas.}
+    \label{fig:3replicas-128}
+\end{figure}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{3R_1024B.pdf}
+    \caption{Performance for operations with 1024 bytes over 3 replicas.}
+    \label{fig:3replicas-1024}
+\end{figure}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{6R_128B.pdf}
+    \caption{Performance for operations with 128 bytes over 6 replicas.}
+    \label{fig:6replicas-128}
+\end{figure}
+
+\begin{figure}[htp]
+    \centering
+    \includegraphics[width=8cm]{6R_1024B.pdf}
+    \caption{Performance for operations with 1024 bytes over 6 replicas.}
+    \label{fig:6replicas-1024}
+\end{figure}
 
 \section{Conclusions}
 
