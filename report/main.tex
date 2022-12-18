@@ -2,6 +2,8 @@
 
 \usepackage{multirow}
 \usepackage{graphicx}
+\usepackage{subcaption}
+\captionsetup{subrefformat=parens}
 \usepackage[ruled, vlined]{algorithm2e}
 % \usepackage{algorithm}
 % \usepackage{algpseudocode}
@@ -150,7 +152,7 @@ The remainder of this article is organized as follows: In Section 2 we will be g
 
 \subsection{Consensus}
 
-The consensus problem in a distributed system refers to the challenge of achieving agreement among a group of processes or nodes, on a single data value. This problem is crucial in distributed systems, as it allows a network of nodes to reach a consistent state.
+The consensus problem in a distributed system refers to the challenge of achieving agreement among a group of processes or nodes, on a single data value. This problem is crucial in distributed systems, as it allows a network of nodes to reach a consistent state. A correct consensus protocol must uphold the following properties:
 
 \begin{itemize}
     \item \textbf{Termination} Every correct process eventually decides a value.
@@ -160,13 +162,13 @@ The consensus problem in a distributed system refers to the challenge of achievi
 \end{itemize}
 
 % TODO: Cite FLP here.
-Consensus, as specified in it's formal definition, has been proven to be impossible under an asynchronous system with the crash-fault model, it is, although, possible to achieve a practically useful version by relaxing some of its properties.
+Consensus, as specified in it's formal definition, has been proven to be impossible under an asynchronous system with the crash-fault model \cite{fischer1985impossibility}, it is, although, possible to achieve a practically useful version by relaxing one or some of its properties.
 
-\subsection{Paxos} 
+\subsubsection{Paxos} 
 
-Paxos is a distributed agreement protocol that achieves an altered version of Consensus in which we relax the Termination property, ensuring that the system only progresses if it behaves in a synchronous way for a long enough period.
+Paxos is a distributed agreement protocol that achieves a weaker version of consensus by relaxing the \textbf{Termination} property. This ensures that the system only progresses if it behaves in a synchronous way for a long enough period.
 
-In Paxos, for ease of understanding, \textbf{each replica} is often subdivided into three different components, each with different responsibilities:
+In Paxos, for ease of understanding, each replica is often subdivided into three different components, each with different responsibilities:
 
 \begin{itemize}
     \item \textbf{Proposers}, responsible for proposing new values for the system to decide on.
@@ -174,21 +176,23 @@ In Paxos, for ease of understanding, \textbf{each replica} is often subdivided i
     \item \textbf{Learners}, they are the component responsible for understanding that a value has been decided on. 
 \end{itemize}
 
-There are three main phases in the Paxos protocol: the prepare phase, the accept phase, and the decide phase. In the prepare phase, the proposers propose on values and asks all the acceptors to promise not to accept any other proposals in future rounds. In the accept phase, replicas asks the other replicas to accept the proposal. If a majority of the replicas accept the proposal, then the round is considered successful and the value is committed in the decide phase.
+There are two main phases in the Paxos protocol: the prepare phase and the accept phase. In the prepare phase, the proposers send prepare requests asking all the acceptors to promise not to accept any other proposals. After receiving a majority quorum of promises, in the accept phase proposers send their proposed values to the acceptors. After this, acceptors send the values to the learners which are able to decide them.
 
 One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to decide. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
 
-The main disadvantage of using Paxos in opposition to some of its alternatives, is that for each value that we're deciding on, we need to use a new instance of the Protocol. This implies that everytime we want to make a decision, we need to redo all the phases of the algorithm, including the prepare phase, which severely hurts the performance of the protocol. 
+The main disadvantage of using Paxos in opposition to some of its alternatives, is that for each value that we're deciding on, we need to use a new instance of the protocol. This implies that everytime we want to make a decision, we need to redo all the phases of the algorithm, including the prepare phase, which impacts the performance of the protocol. 
 
-\subsection{Multi-Paxos}
+\subsubsection{Multi-Paxos}
 
-Multi-Paxos is a variant of the Paxos protocol that is used when there are multiple replicas that need to agree on multiple values. This can be useful in situations where there are multiple sources of data that need to be kept in sync across the replicas.
+% Multi-Paxos is a variant of the Paxos protocol that is used when there are multiple replicas that need to agree on multiple values. This can be useful in situations where there are multiple sources of data that need to be kept in sync across the replicas.
 
-Multi-Paxos is a variant of the Paxos protocol and as such, it also uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on values. The distinction here is that we select a distinguished proposer (also referred to as leader, in the literature) to be the only one proposing values.
+Multi-Paxos is a variant of the Paxos protocol and as such, it also uses two phases in which the replicas communicate with each other to come to agreement on values. The distinction here is a distinguished proposer is selected (also referred to as leader) to be the only one proposing values.
 
-In this protocol, in contrary to Paxos, there is a single instance of the protocol, that contains shared state for decisions made for multiple values. This shared state most importantly contains the distinguished proposer. The usage of this distinguished proposer, allows us to remove the Prepare phase of the protocol when making multiple decisions, therefore using only accept messages sent by the leader and removing one round-trip-time from the process of making a decision.
+Additionally, in contrary to Paxos, there is only a single instance of the protocol which contains the shared state for decisions made for multiple values. This shared state will also contain the distinguished proposer. 
 
-The leader is elected by using a Prepare phase, either when first initializing the system, or when a process suspects that the current leader has crashed.
+The benefit of using a distinguished proposer is that it relinquishes the need of the prepare phase when making multiple decisions. This means only accept messages are sent by the leader which removes one round-trip-time from the process of making a decision.
+
+The leader is elected by using a prepare phase, either when first initializing the system, or when a participating replica suspects that the current leader has crashed.
 
 \section{Implementation}
 
@@ -261,10 +265,16 @@ The leader is elected by using a Prepare phase, either when first initializing t
 
 We implemented Paxos, Multi-Paxos and the state machine replication protocol using the Babel Java framework, ensuring both agreement protocols are compared fairly.
 
+\subsection{Application}
+
+The replicated hash map  
+
 \subsection{State Machine Replication}
 
 % Explain HashApp <-> SMR and SMR <-> Agreement and how different operations are run in Paxos 
 % don't think we need pseudo-code but wtv
+
+
 
 HashApp:
 1.1 HashApp receives requests from clients.
@@ -324,32 +334,47 @@ This command is used to remove a replica from the current membership.
 \section{Experimental Evaluation}
 
 \begin{figure}[htp]
+    
+\begin{subfigure}{\linewidth}
     \centering
-    \includegraphics[width=8cm]{3R_128B.pdf}
-    \caption{Performance for operations with 128 bytes over 3 replicas.}
+    \caption{128 byte operations}
+    \includegraphics[width=\textwidth]{3R_128B.pdf}
     \label{fig:3replicas-128}
-\end{figure}
+\end{subfigure}
 
-\begin{figure}[htp]
+\begin{subfigure}{\linewidth}
     \centering
-    \includegraphics[width=8cm]{3R_1024B.pdf}
-    \caption{Performance for operations with 1024 bytes over 3 replicas.}
+    \caption{1024 byte operations}
+    \includegraphics[width=\textwidth]{3R_1024B.pdf}
     \label{fig:3replicas-1024}
+\end{subfigure}
+
+\caption{Performance for operations over 3 replicas.}
+\label{fig:3replicas}
+
 \end{figure}
 
 \begin{figure}[htp]
+    
+\begin{subfigure}{\linewidth}
     \centering
-    \includegraphics[width=8cm]{6R_128B.pdf}
-    \caption{Performance for operations with 128 bytes over 6 replicas.}
+    \caption{128 byte operations}
+    \includegraphics[width=\textwidth]{6R_128B.pdf}
     \label{fig:6replicas-128}
+\end{subfigure}
+
+\begin{subfigure}{\linewidth}
+    \centering
+    \caption{1024 byte operations}
+    \includegraphics[width=\textwidth]{6R_1024B.pdf}
+    \label{fig:6replicas-1024}
+\end{subfigure}
+
+\caption{Performance for operations over 6 replicas.}
+\label{fig:6replicas}
+
 \end{figure}
 
-\begin{figure}[htp]
-    \centering
-    \includegraphics[width=8cm]{6R_1024B.pdf}
-    \caption{Performance for operations with 1024 bytes over 6 replicas.}
-    \label{fig:6replicas-1024}
-\end{figure}
 
 \section{Conclusions}
 
