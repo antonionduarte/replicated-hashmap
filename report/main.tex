@@ -333,6 +333,12 @@ Possible reasons for this are:
 
 \section{Conclusions}
 
+In this paper, we evaluated the performance of two replicated hashmap systems using state-machine replication, one of which implemented Paxos and the other implemented Multipaxos.
+Our experimental results demonstrate that Multipaxos has a superior performance over Paxos in this context.
+Multipaxos was able to achieve a higher success rate in committing updates to the hashmap, with lower overall latency and fewer retries due to its use of a leader.
+The reduction in overall latency and messages sent is likely the primary contributor to the improved performance of Multipaxos, as it allows for quicker and more efficient communication between nodes in the distributed system.
+Overall, these findings suggest that Multipaxos is a valuable alternative to Paxos in replicated hashmap systems, and further research into its use in other distributed systems contexts is warranted.
+
 %%
 %% The acknowledgments section is defined using the "acks" environment
 %% (and NOT an unnumbered section). This ensures the proper
