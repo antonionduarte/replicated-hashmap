@@ -317,6 +317,8 @@ This command is used to remove a replica from the current membership.
 
 \end{figure}
 
+In all figures we can see that multi-paxos outperforms paxos.
+This is expected since, by using a designated proposer, the "leader", multi-paxos can avoid the contention that paxos suffers from when there are multiple proposers trying to propose a value at the same time.
 
 \section{Conclusions}
 
