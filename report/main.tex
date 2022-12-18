@@ -137,13 +137,13 @@ In this work we propose a replicated hash map which uses an agreement protocol t
 
 A replicated hash map is a distributed data structure that allows for efficient access to data across a network of machines. It uses the concept of a hash map, which is a data structure that stores key-value pairs and allows for efficient lookup of values based on their associated keys. In a replicated hash map, multiple copies of the hash map are maintained on different machines in the network, and agreement protocols can be used to ensure that all copies are kept consistent with each other.
 
-Paxos \cite{leslie1998part} \cite{lamport2001paxos} \cite{van2015paxos} and Multi-Paxos \cite{lamport2001paxos} \cite{du2009multi} \cite{van2015paxos} are examples of agreement protocols that are commonly used in distributed systems to achieve consistency in replicated data structures. The Paxos algorithm is a method for reaching consensus among a group of nodes in a distributed system. Multi-Paxos is a variant of the Paxos algorithm that allows for improved performance in scenarios where there are multiple replicated data structures, or multiple instances of the Paxos algorithm running concurrently.
+Paxos \cite{leslie1998part} \cite{lamport2001paxos} \cite{van2015paxos} and Multi-Paxos \cite{lamport2001paxos} \cite{du2009multi} \cite{van2015paxos} are examples of agreement protocols that are commonly used in distributed systems to achieve consistency in replicated data structures. The Paxos algorithm is a method for reaching consensus among a group of nodes in a distributed system. Multi-Paxos is a variant of the Paxos algorithm that improves performance in in scenarios where there are multiple replicated data structures, or multiple instances of the Paxos algorithm running concurrently.
 
-In both Paxos and Multi-Paxos, nodes in the distributed system communicate with each other using a series of rounds, during which they propose values, vote on the proposed values, and ultimately agree on a single value to be chosen. Once consensus has been reached, the agreed-upon value can be safely used by the nodes in the system, ensuring that all copies of the replicated data are consistent with each other.
+In both Paxos and Multi-Paxos, nodes in the distributed system communicate with each other using a series of rounds, during which they propose values, "vote" on the proposed values, and ultimately agree on a single value to be chosen. Once consensus has been reached, the agreed-upon value can be safely used by the nodes in the system, ensuring that all copies of the replicated data are consistent with each other.
 
 Operations decided with agreement have to be executed in the same order in every replica so they don't diverge their state. State machine replication is a technique used in distributed systems to ensure that the same sequence of operations is performed on all replicas of a given state machine. This is typically achieved through the use of an agreement protocol, which is used to coordinate the actions of the replicas and reach consensus on the order in which operations should be applied.
 
-In this work, we present a proposal for a replicated hash map application that takes use of an agreement protocol, either Paxos or Multi-Paxos, and state machine replication implemented with the Babel \cite{fouto2022babel} Java framework.
+In this work, we present a proposal for a replicated hash map application that makes use of an agreement protocol, either Paxos or Multi-Paxos, and state machine replication implemented with the Babel \cite{fouto2022babel} Java framework.
 
 The remainder of this article is organized as follows: In Section 2 we will be going over the Related Work, explaining more thoroughly the mentioned protocols; In Section 3 we will go over the details of our implementation of the protocols and how they interact with each other; In Section 4 we present the results of our experimental evaluation, testing the system with an increasing throughput of clients issuing operations. In Section 5 we will summarize and take conclusions on this work.
 
@@ -167,15 +167,15 @@ Consensus, as specified in it's formal definition, has been proven to be impossi
 
 Paxos is a distributed agreement protocol that achieves a weaker version of consensus by relaxing the \textbf{Termination} property. This ensures that the system only progresses if it behaves in a synchronous way for a long enough period.
 
-In Paxos, for ease of understanding, each replica is often subdivided into three different components, each with different responsibilities:
+In Paxos, for ease of understanding, each replica is often subdivided into three different roles, each with different responsibilities:
 
 \begin{itemize}
     \item \textbf{Proposers}, responsible for proposing new values for the system to decide on.
     \item \textbf{Acceptors}, they promise on proposed values, and lock-in values by accepting them.
-    \item \textbf{Learners}, they are the component responsible for understanding that a value has been decided on. 
+    \item \textbf{Learners}, the role responsible for understanding that a value has been decided on. 
 \end{itemize}
 
-There are two main phases in the Paxos protocol: the prepare phase and the accept phase. In the prepare phase, the proposers send prepare requests asking all the acceptors to promise not to accept any other proposals. After receiving a majority quorum of promises, in the accept phase proposers send their proposed values to the acceptors. After this, acceptors send the values to the learners which are able to decide them.
+There are two main phases in the Paxos protocol: the prepare phase and the accept phase. In the prepare phase, the proposers send prepare requests asking all the acceptors to promise not to accept any other proposals. After receiving a majority quorum of promises, in the accept phase proposers send their proposed values to the acceptors. After this, the learners will become aware of the decided value. This can be achieved in a variety of ways, for example, the acceptors send the accepted values to all learners.
 
 One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to decide. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
 
@@ -275,7 +275,7 @@ The agreement protocols, Paxos and Multi-Paxos, were implemented as indicated in
 
 The static configuration of each protocol and clients used in this experimental evaluation are presented in Table~\ref{tab:parameters}.
 
-\textbf{Testbench:} the evaluation was conducted using a docker setup with a container per replica and a container for all the YCSB clients, using two machines with an Intel Xeon Gold 6346 CPU, 128 GiB of DDR4 3200MHz RAM, and 1 Gbps of network bandwidth. One of the machines contained the clients and the other the replicas.
+\textbf{Testbench:} the evaluation was conducted using a docker setup with a container per replica and a container for all the YCSB clients, using two machines with a 2x Intel Xeon Gold 6346 CPU, 128 GiB of DDR4 3200MHz RAM, and 1 Gbps of network bandwidth. One of the machines contained the clients and the other the replicas.
 
 \subsection{Results}
 
