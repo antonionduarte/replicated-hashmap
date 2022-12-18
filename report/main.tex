@@ -148,21 +148,47 @@ The remainder of this article is organized as follows: In Section 2 we will be g
 
 \section{Related Work}
 
+\subsection{Consensus}
+
+The consensus problem in a distributed system refers to the challenge of achieving agreement among a group of processes or nodes, on a single data value. This problem is crucial in distributed systems, as it allows a network of nodes to reach a consistent state.
+
+\begin{itemize}
+    \item \textbf{Termination} Every correct process eventually decides a value.
+    \item \textbf{Validity} If a process decides on a value \textit{v}, then \textit{v} was proposed by some process.
+    \item \textbf{Integrity} No process decides twice.
+    \item \textbf{Uniform Agreement} No two processes decide differently. 
+\end{itemize}
+
+% TODO: Cite FLP here.
+Consensus, as specified in it's formal definition, has been proven to be impossible under an asynchronous system with the crash-fault model, it is, although, possible to achieve a practically useful version by relaxing some of its properties.
+
 \subsection{Paxos} 
 
-The basic idea behind Paxos is that it uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on the value. In each round, replicas running Paxos propose a values, and the other replicas either accept or reject the proposal. If a majority of the replicas accept the proposal, then the value is considered to be agreed upon and the round is considered successful.
+Paxos is a distributed agreement protocol that achieves an altered version of Consensus in which we relax the Termination property, ensuring that the system only progresses if it behaves in a synchronous way for a long enough period.
 
-There are three main phases in the Paxos protocol: the prepare phase, the accept phase, and the decide/commit phase. In the prepare phase, replicas propose values and asks the other replicas to promise not to accept any other proposals in future rounds. In the accept phase, replicas asks the other replicas to accept the proposal. If a majority of the replicas accept the proposal, then the round is considered successful and the value is committed in the commit phase.
+In Paxos, for ease of understanding, \textbf{each replica} is often subdivided into three different components, each with different responsibilities:
 
-One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to commit. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
+\begin{itemize}
+    \item \textbf{Proposers}, responsible for proposing new values for the system to decide on.
+    \item \textbf{Acceptors}, they promise on proposed values, and lock-in values by accepting them.
+    \item \textbf{Learners}, they are the component responsible for understanding that a value has been decided on. 
+\end{itemize}
+
+There are three main phases in the Paxos protocol: the prepare phase, the accept phase, and the decide phase. In the prepare phase, the proposers propose on values and asks all the acceptors to promise not to accept any other proposals in future rounds. In the accept phase, replicas asks the other replicas to accept the proposal. If a majority of the replicas accept the proposal, then the round is considered successful and the value is committed in the decide phase.
+
+One of the key benefits of Paxos is that it is able to tolerate failures. For example, if a replica fails during the prepare phase its prepare will be overwritten by a future one, and if a replica fails during the accept phase the other replicas can still come to agreement on the value without it, as it requires a majority quorum to decide. This makes Paxos a robust and fault-tolerant protocol for achieving consensus in distributed systems.
+
+The main disadvantage of using Paxos in opposition to some of its alternatives, is that for each value that we're deciding on, we need to use a new instance of the Protocol. This implies that everytime we want to make a decision, we need to redo all the phases of the algorithm, including the prepare phase, which severely hurts the performance of the protocol. 
 
 \subsection{Multi-Paxos}
 
 Multi-Paxos is a variant of the Paxos protocol that is used when there are multiple replicas that need to agree on multiple values. This can be useful in situations where there are multiple sources of data that need to be kept in sync across the replicas.
 
-The basic idea behind Multi-Paxos is similar to the original Paxos protocol. It uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on the values, but the distinction here is only a designated leader is proposing values.
+Multi-Paxos is a variant of the Paxos protocol and as such, it also uses a series of rounds, or phases, in which the replicas communicate with each other to come to agreement on values. The distinction here is that we select a distinguished proposer (also referred to as leader, in the literature) to be the only one proposing values.
 
-The key difference between Paxos and Multi-Paxos is that in Multi-Paxos, the replicas can agree on multiple values in a single round. This is achieved by using a sequence number for each value, which allows the replicas to determine the order in which the values should be applied. This can be useful in situations where there are multiple sources of data that need to be kept in sync, as it allows the replicas to agree on the order in which the data should be applied and ensures that the data remains consistent across all of the replicas.
+In this protocol, in contrary to Paxos, there is a single instance of the protocol, that contains shared state for decisions made for multiple values. This shared state most importantly contains the distinguished proposer. The usage of this distinguished proposer, allows us to remove the Prepare phase of the protocol when making multiple decisions, therefore using only accept messages sent by the leader and removing one round-trip-time from the process of making a decision.
+
+The leader is elected by using a Prepare phase, either when first initializing the system, or when a process suspects that the current leader has crashed.
 
 \section{Implementation}
 
@@ -232,8 +258,6 @@ The key difference between Paxos and Multi-Paxos is that in Multi-Paxos, the rep
 %     \caption{Unstructured Publish-Subscribe}
 % 		\label{alg:uns_pubsub}
 % \end{algorithm}
-
-% Im
 
 We implemented Paxos, Multi-Paxos and the state machine replication protocol using the Babel Java framework, ensuring both agreement protocols are compared fairly.
 
