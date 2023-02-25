@@ -1,5 +1,7 @@
 = replicated-hashmap
 
+A strongly consistent replicated HashMap implementation. Can either be used with Paxos or Multipaxos (which are both also implemented).
+
 == Parameters
 
 [cols="1,3"]
